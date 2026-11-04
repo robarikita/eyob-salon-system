@@ -8,6 +8,12 @@ import EmployeeProfile from './pages/admin/employees/EmployeeProfile';
 import ServiceAssignmentView from './pages/admin/employees/ServiceAssignmentView';
 import WeeklyScheduleView from './pages/admin/employees/WeeklyScheduleView';
 
+// Phase 5: Service Rituals & Multi-Branch Governance Pages
+import ServiceCatalogPage from './pages/admin/services/ServiceCatalogPage';
+import CreateServicePage from './pages/admin/services/CreateServicePage';
+import ServiceDetailsPage from './pages/admin/services/ServiceDetailsPage';
+import BranchServiceGovernancePage from './pages/admin/services/BranchServiceGovernancePage';
+
 export const App: React.FC = () => {
   return (
     <Router>
@@ -24,6 +30,12 @@ export const App: React.FC = () => {
         <Route path="/admin/employees/:id" element={<EmployeeProfile />} />
         <Route path="/admin/employees/:id/services" element={<ServiceAssignmentView />} />
         <Route path="/admin/employees/:id/schedule" element={<WeeklyScheduleView />} />
+
+        {/* Phase 5: Service Rituals & Branch Governance Routes */}
+        <Route path="/admin/services" element={<ServiceCatalogPage />} />
+        <Route path="/admin/services/create" element={<CreateServicePage />} />
+        <Route path="/admin/services/branch-governance" element={<BranchServiceGovernancePage />} />
+        <Route path="/admin/services/:id" element={<ServiceDetailsPage />} />
 
         {/* Wildcard fallback to home */}
         <Route path="*" element={<Navigate to="/" replace />} />

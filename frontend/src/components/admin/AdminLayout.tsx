@@ -28,7 +28,12 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   const navItems = [
     { label: 'Overview', path: '/admin/employees/dashboard', icon: 'dashboard' },
     { label: 'Appointments', path: '/admin/appointments', icon: 'calendar_month' },
-    { label: 'Service Rituals', path: '/admin/services', icon: 'auto_awesome' },
+  ];
+
+  const serviceSubNav = [
+    { label: 'Master Catalog', path: '/admin/services', icon: 'auto_awesome' },
+    { label: 'Curate Ritual', path: '/admin/services/create', icon: 'add_circle' },
+    { label: 'Branch Governance', path: '/admin/services/branch-governance', icon: 'tune' },
   ];
 
   const employeeSubNav = [
@@ -43,6 +48,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   ];
 
   const isEmployeeSectionActive = currentPath.startsWith('/admin/employees');
+  const isServicesSectionActive = currentPath.startsWith('/admin/services');
 
   return (
     <div className="bg-background min-h-screen text-on-surface font-sans flex antialiased">
@@ -109,6 +115,50 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                   </Link>
                 );
               })}
+
+              {/* Service Rituals Group */}
+              <div className="pt-1 pb-1">
+                <Link
+                  to="/admin/services"
+                  onClick={() => setMobileSidebarOpen(false)}
+                  className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-colors ${
+                    isServicesSectionActive
+                      ? 'bg-primary-container text-on-primary-container font-semibold shadow-sm'
+                      : 'text-surface-variant hover:bg-surface-variant/10 hover:text-surface-bright'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="material-symbols-outlined text-[19px]">hotel_class</span>
+                    <span className="text-sm">Service Rituals</span>
+                  </div>
+                  <span className="material-symbols-outlined text-[16px]">expand_more</span>
+                </Link>
+
+                <div className="pl-7 pr-2 mt-1 space-y-0.5">
+                  {serviceSubNav.map((sub) => {
+                    const isSubActive = currentPath === sub.path;
+                    return (
+                      <Link
+                        key={sub.path}
+                        to={sub.path}
+                        onClick={() => setMobileSidebarOpen(false)}
+                        className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
+                          isSubActive
+                            ? 'bg-primary-container/80 text-on-primary-container font-semibold'
+                            : 'text-surface-variant hover:bg-surface-variant/10 hover:text-surface-bright'
+                        }`}
+                      >
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            isSubActive ? 'bg-on-primary-container' : 'bg-primary-fixed-dim'
+                          }`}
+                        />
+                        <span>{sub.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
 
               {/* Employees Group */}
               <div className="pt-1 pb-1">

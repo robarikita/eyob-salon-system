@@ -430,10 +430,22 @@ export class EmployeeService {
         throw new NotFoundError("One or more assigned services were not found in the catalog.");
       }
 
+      const branchServices = await prisma.branchService.findMany({
+        where: {
+          serviceId: { in: serviceIds },
+          branchId: employee.branchId,
+        },
+      });
+      const validBranchServiceIds = new Set(branchServices.map((bs) => bs.serviceId));
+
       for (const service of services) {
-        if (service.branchId !== employee.branchId) {
+        const isBranchMatch = service.branchId === employee.branchId;
+        const isDeployedToBranch = validBranchServiceIds.has(service.id);
+        const isGlobal = !service.branchId;
+
+        if (!isBranchMatch && !isDeployedToBranch && !isGlobal) {
           throw new ValidationError(
-            `Cross-Branch Violation: Service '${service.title}' belongs to branch ${service.branchId}, which differs from employee branch ${employee.branchId}.`
+            `Cross-Branch Violation: Service '${service.name}' belongs to branch ${service.branchId}, which differs from employee branch ${employee.branchId}.`
           );
         }
       }
