@@ -10,6 +10,11 @@ import authRoutes from "./modules/auth/auth.routes";
 import branchRoutes from "./modules/branch/branch.routes";
 import employeeRoutes from "./modules/employee/employee.routes";
 import serviceRoutes from "./modules/service/service.routes";
+import {
+  customerBookingRouter,
+  staffAppointmentRouter,
+  adminAppointmentRouter,
+} from "./modules/booking/booking.routes";
 
 const app = express();
 
@@ -36,6 +41,9 @@ app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/branches", branchRoutes);
 app.use("/api/v1/employees", employeeRoutes);
 app.use("/api/v1/services", serviceRoutes);
+app.use("/api/v1/bookings", customerBookingRouter);
+app.use("/api/v1/staff", staffAppointmentRouter);
+app.use("/api/v1/admin/appointments", adminAppointmentRouter);
 
 // Error Handler
 app.use(errorHandler);
