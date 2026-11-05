@@ -7,6 +7,7 @@ export interface TokenPayload {
   role: UserRole;
   branchId: string | null;
   phoneNumber: string;
+  tokenVersion?: number;
 }
 
 export const generateTokens = (payload: TokenPayload) => {

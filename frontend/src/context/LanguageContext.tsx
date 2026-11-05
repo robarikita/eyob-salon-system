@@ -45,6 +45,14 @@ const DICTIONARY: Record<string, TranslationEntry> = {
   'actions.security': { en: 'Security', am: 'ደህንነት', bilingual: 'Security / ደህንነት' },
   'actions.newPassword': { en: 'New Password', am: 'አዲስ የይለፍ ቃል', bilingual: 'New Password / አዲስ የይለፍ ቃል' },
   'actions.confirm': { en: 'Confirm', am: 'አረጋግጥ', bilingual: 'Confirm / አረጋግጥ' },
+
+  // Role Selector Tabs & Password Reset
+  'roles.customer': { en: 'Customer', am: 'ደንበኛ', bilingual: 'Customer / ደንበኛ' },
+  'roles.specialist': { en: 'Specialist', am: 'ባለሙያ', bilingual: 'Specialist / ባለሙያ' },
+  'roles.branchAdmin': { en: 'Branch Admin', am: 'አስተዳዳሪ', bilingual: 'Branch Admin / አስተዳዳሪ' },
+  'roles.owner': { en: 'Owner', am: 'ባለቤት', bilingual: 'Owner / ባለቤት' },
+  'auth.forgotPassword': { en: 'Forgot Password?', am: 'የይለፍ ቃል ረሱ?', bilingual: 'Forgot Password? / የይለፍ ቃል ረሱ?' },
+  'auth.resetPassword': { en: 'Reset Password', am: 'የይለፍ ቃል ቀይር', bilingual: 'Reset Password / የይለፍ ቃል ቀይር' },
 };
 
 interface LanguageContextType {

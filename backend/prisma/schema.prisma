@@ -63,13 +63,16 @@ enum AuditAction {
 // -----------------------------------------------------------------------------
 
 model User {
-  id        String   @id @default(uuid())
-  firstName String
-  lastName  String
-  email     String?  @unique
-  phone     String   @unique
-  password  String
-  role      UserRole @default(CUSTOMER)
+  id                   String    @id @default(uuid())
+  firstName            String
+  lastName             String
+  email                String?   @unique
+  phone                String    @unique
+  password             String
+  role                 UserRole  @default(CUSTOMER)
+  passwordResetToken   String?   @unique
+  passwordResetExpires DateTime?
+  tokenVersion         Int       @default(0)
   
   // Relations
   branchId  String?

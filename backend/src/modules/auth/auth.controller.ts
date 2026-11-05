@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { AuthService } from "./auth.service";
-import { registerSchema, loginSchema, refreshSchema } from "./auth.schema";
+import { registerSchema, loginSchema, refreshSchema, forgotPasswordSchema, resetPasswordSchema } from "./auth.schema";
 
 export class AuthController {
   static async register(req: Request, res: Response, next: NextFunction) {
@@ -60,6 +60,34 @@ export class AuthController {
       res.status(200).json({
         status: "success",
         data: { tokens },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async forgotPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = forgotPasswordSchema.parse(req.body);
+      const result = await AuthService.forgotPassword(data);
+
+      res.status(200).json({
+        status: "success",
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async resetPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = resetPasswordSchema.parse(req.body);
+      const result = await AuthService.resetPassword(data);
+
+      res.status(200).json({
+        status: "success",
+        data: result,
       });
     } catch (error) {
       next(error);

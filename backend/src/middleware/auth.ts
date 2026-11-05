@@ -3,8 +3,9 @@ import { UnauthorizedError } from "../errors/AppError";
 import { verifyToken } from "../utils/jwt";
 import { UserRole } from "@prisma/client";
 import { logger } from "../utils/logger";
+import prisma from "../utils/prisma";
 
-export const authenticate = (req: Request, _res: Response, next: NextFunction) => {
+export const authenticate = async (req: Request, _res: Response, next: NextFunction) => {
   try {
     let token: string | undefined;
 
@@ -19,6 +20,17 @@ export const authenticate = (req: Request, _res: Response, next: NextFunction) =
     }
 
     const payload = verifyToken(token);
+
+    // Verify session validity and tokenVersion against database for session invalidation
+    const user = await prisma.user.findUnique({
+      where: { id: payload.id },
+      select: { tokenVersion: true },
+    });
+
+    if (!user || user.tokenVersion !== (payload.tokenVersion ?? 0)) {
+      throw new UnauthorizedError("Session expired or token revoked");
+    }
+
     req.user = payload;
     next();
   } catch (error) {

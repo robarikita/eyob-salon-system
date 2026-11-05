@@ -7,7 +7,8 @@ const router = Router();
 // Public routes (Optionally authenticate to extract role if present)
 const optionalAuth = (req: any, res: any, next: any) => {
   if (req.headers.authorization || req.cookies?.accessToken) {
-    return authenticate(req, res, next);
+    authenticate(req, res, next);
+    return;
   }
   next();
 };

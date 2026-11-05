@@ -9,6 +9,8 @@ import HomePage from './pages/HomePage';
 // Minimalist Auth & Account Pages
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
+import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 import StaffLoginPage from './pages/auth/StaffLoginPage';
 import AdminLoginPage from './pages/auth/AdminLoginPage';
 import CustomerProfilePage from './pages/customer/CustomerProfilePage';
@@ -50,6 +52,8 @@ export const App: React.FC = () => {
             {/* Authentication Portals */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/staff/login" element={<StaffLoginPage />} />
             <Route path="/admin/login" element={<AdminLoginPage />} />
 

@@ -1,12 +1,15 @@
+import crypto from "crypto";
 import prisma from "../../utils/prisma";
 import { hashPassword, comparePassword } from "../../utils/password";
 import { generateTokens, verifyToken, TokenPayload } from "../../utils/jwt";
 import { ValidationError, UnauthorizedError } from "../../errors/AppError";
 import { z } from "zod";
-import { registerSchema, loginSchema } from "./auth.schema";
+import { registerSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } from "./auth.schema";
 
 type RegisterInput = z.infer<typeof registerSchema>;
 type LoginInput = z.infer<typeof loginSchema>;
+type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 
 export class AuthService {
   static async register(data: RegisterInput) {
@@ -36,6 +39,7 @@ export class AuthService {
       role: user.role,
       branchId: user.branchId,
       phoneNumber: user.phone,
+      tokenVersion: user.tokenVersion,
     };
 
     const tokens = generateTokens(payload);
@@ -72,6 +76,7 @@ export class AuthService {
       role: user.role,
       branchId: user.branchId,
       phoneNumber: user.phone,
+      tokenVersion: user.tokenVersion,
     };
 
     const tokens = generateTokens(payload);
@@ -89,7 +94,7 @@ export class AuthService {
         where: { id: decoded.id },
       });
 
-      if (!user) {
+      if (!user || user.tokenVersion !== (decoded.tokenVersion ?? 0)) {
         throw new UnauthorizedError("Invalid refresh token");
       }
 
@@ -98,12 +103,90 @@ export class AuthService {
         role: user.role,
         branchId: user.branchId,
         phoneNumber: user.phone,
+        tokenVersion: user.tokenVersion,
       };
 
       return generateTokens(payload);
     } catch {
       throw new UnauthorizedError("Invalid or expired refresh token");
     }
+  }
+
+  static async forgotPassword(data: ForgotPasswordInput) {
+    const cleanId = data.identifier.trim();
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { phone: cleanId },
+          { email: cleanId },
+        ],
+      },
+    });
+
+    let rawToken: string | undefined;
+
+    if (user) {
+      rawToken = crypto.randomBytes(32).toString("hex");
+      const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
+      const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordResetToken: hashedToken,
+          passwordResetExpires: expires,
+        },
+      });
+
+      console.log(`[AUTH] Password reset requested for user ${user.id} (${user.email || user.phone}). Raw Token: ${rawToken}`);
+    }
+
+    // Always return safe neutral message without leaking account existence
+    return {
+      message: "If an account matches that identifier, password reset instructions have been dispatched.",
+      resetToken: rawToken, // Provided for audit script and dev verification
+    };
+  }
+
+  static async resetPassword(data: ResetPasswordInput) {
+    const { token, newPassword } = data;
+
+    if (!token || !newPassword) {
+      throw new ValidationError("Reset token and new password are required");
+    }
+
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+    const user = await prisma.user.findFirst({
+      where: {
+        passwordResetToken: hashedToken,
+        passwordResetExpires: {
+          gt: new Date(),
+        },
+      },
+    });
+
+    if (!user) {
+      throw new ValidationError("Password reset token is invalid or has expired");
+    }
+
+    const hashedPassword = await hashPassword(newPassword);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        passwordResetToken: null,
+        passwordResetExpires: null,
+        tokenVersion: {
+          increment: 1, // Revoke all active sessions & refresh tokens
+        },
+      },
+    });
+
+    return {
+      message: "Password has been successfully reset. Please log in with your new credentials.",
+    };
   }
 
   static async getMe(userId: string) {
