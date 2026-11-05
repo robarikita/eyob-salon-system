@@ -86,3 +86,4 @@ export const authApi = {
     return data.data.user;
   },
 };
+

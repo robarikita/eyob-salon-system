@@ -6,7 +6,7 @@ import { LanguageToggle } from '../../components/common/LanguageToggle';
 import { authApi } from '../../api/authApi';
 
 export const LoginPage: React.FC = () => {
-  const { login, loginWithDemo } = useAuth();
+  const { login } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
@@ -52,11 +52,6 @@ export const LoginPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleDemoSignIn = (role: 'CUSTOMER' | 'EMPLOYEE' | 'BRANCH_ADMIN' | 'OWNER') => {
-    loginWithDemo(role);
-    redirectAfterLogin(role);
   };
 
   return (
@@ -155,45 +150,8 @@ export const LoginPage: React.FC = () => {
             </button>
           </form>
 
-          {/* Quick Demo Role Chips */}
-          <div className="mt-6 pt-5 border-t border-[#D4AF37]/15">
-            <div className="text-[10px] uppercase tracking-widest text-stone-500 text-center mb-2.5 font-medium">
-              Demo Access / የሙከራ መለያ
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <button
-                type="button"
-                onClick={() => handleDemoSignIn('CUSTOMER')}
-                className="py-1.5 px-2 rounded bg-black/40 border border-[#3A332C] hover:border-[#D4AF37]/50 text-stone-300 hover:text-[#D4AF37] transition text-center truncate"
-              >
-                Patron (Sara T.)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDemoSignIn('EMPLOYEE')}
-                className="py-1.5 px-2 rounded bg-black/40 border border-[#3A332C] hover:border-[#D4AF37]/50 text-stone-300 hover:text-[#D4AF37] transition text-center truncate"
-              >
-                Specialist (Sara A.)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDemoSignIn('BRANCH_ADMIN')}
-                className="py-1.5 px-2 rounded bg-black/40 border border-[#3A332C] hover:border-[#D4AF37]/50 text-stone-300 hover:text-[#D4AF37] transition text-center truncate"
-              >
-                Bole Admin
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDemoSignIn('OWNER')}
-                className="py-1.5 px-2 rounded bg-black/40 border border-[#3A332C] hover:border-[#D4AF37]/50 text-stone-300 hover:text-[#D4AF37] transition text-center truncate"
-              >
-                Proprietor (Owner)
-              </button>
-            </div>
-          </div>
-
           {/* Bottom Register Link */}
-          <div className="mt-6 text-center">
+          <div className="mt-8 text-center">
             <Link
               to="/register"
               className="text-xs text-[#A3998F] hover:text-[#D4AF37] transition-colors tracking-wide"
@@ -218,3 +176,4 @@ export const LoginPage: React.FC = () => {
 };
 
 export default LoginPage;
+

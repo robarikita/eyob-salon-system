@@ -74,14 +74,14 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
               const el = document.querySelector('#book');
               el?.scrollIntoView({ behavior: 'smooth' });
             }}
-            className="mt-4 sm:mt-0 inline-flex items-center gap-1.5 text-stone-900 hover:text-amber-800 font-semibold text-sm transition-colors group cursor-pointer"
+            className="mt-4 sm:mt-0 inline-flex items-center gap-1.5 text-stone-900 hover:text-amber-800 font-bold text-xs uppercase tracking-wider transition-colors group cursor-pointer"
           >
-            <span>View All Services</span>
+            <span>VIEW ALL SERVICES</span>
             <svg
-              className="w-4 h-4 transition-transform group-hover:translate-x-1"
+              className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1"
               fill="none"
               stroke="currentColor"
-              strokeWidth="2"
+              strokeWidth="2.5"
               viewBox="0 0 24 24"
             >
               <path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" />

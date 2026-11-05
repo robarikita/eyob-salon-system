@@ -17,22 +17,22 @@ export const locationsData: BranchLocation[] = [
     id: 'bole-bulbula',
     name: 'Bole Bulbula',
     badge: 'Open Daily',
-    address: 'Behind Morning Star Mall, Building 3, Ground Floor',
-    hours: 'Hours: 8:30 AM – 8:00 PM',
+    address: 'Behind Morning Star Mall, Building 2, Ground Floor',
+    hours: 'Hours: 9:00 AM - 8:00 PM',
   },
   {
     id: 'kazanchis',
     name: 'Kazanchis',
     badge: 'Open Daily',
-    address: 'Near UNECA Compound, Floor 2, Premium Plaza',
-    hours: 'Hours: 8:00 AM – 8:30 PM',
+    address: 'Next to UNECA Compound, Palace View Complex',
+    hours: 'Hours: 8:30 AM - 8:30 PM',
   },
   {
     id: 'cmc',
     name: 'CMC',
     badge: 'Open Daily',
     address: 'Tsehay Real Estate Square, Wing B, Suite 104',
-    hours: 'Hours: 9:00 AM – 8:00 PM',
+    hours: 'Hours: 9:00 AM - 8:00 PM',
   },
 ];
 
@@ -89,10 +89,10 @@ export const LocationsSection: React.FC<LocationsSectionProps> = ({ onSelectBran
               <button
                 type="button"
                 onClick={() => handleBranchClick(branch.name)}
-                className="text-sm font-semibold text-amber-800 hover:text-amber-900 flex items-center gap-1 pt-2 border-t border-stone-200 transition-colors text-left"
+                className="text-xs font-bold uppercase tracking-wider text-amber-800 hover:text-amber-900 flex items-center gap-1.5 pt-3 border-t border-stone-200/80 transition-colors text-left"
               >
-                <span>Book this branch</span>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <span>BOOK THIS BRANCH</span>
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                   <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>

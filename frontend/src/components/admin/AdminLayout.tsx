@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { LanguageToggle } from '../common/LanguageToggle';
 
@@ -17,6 +17,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   activePath,
 }) => {
   const location = useLocation();
+  const navigate = useNavigate();
   const { user, logout } = useAuth();
   const currentPath = activePath || location.pathname;
   const [currentBranch, setCurrentBranch] = useState(selectedBranch);
@@ -225,8 +226,20 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
           </div>
         </div>
 
-        {/* Sidebar Footer Badge */}
-        <div className="p-4 bg-inverse-surface border-t border-surface-variant/10">
+        {/* Sidebar Sign Out & Footer Badge */}
+        <div className="p-4 bg-inverse-surface border-t border-surface-variant/10 space-y-3">
+          <button
+            type="button"
+            onClick={() => {
+              logout();
+              navigate('/admin/login');
+            }}
+            className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-error hover:bg-error/10 border border-error/20 transition-colors text-sm font-semibold"
+          >
+            <span className="material-symbols-outlined text-[20px]">logout</span>
+            <span>Sign Out / ውጣ</span>
+          </button>
+
           <div className="p-3 rounded-xl bg-surface-container-highest/10 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-full bg-primary-container/20 flex items-center justify-center">
@@ -327,11 +340,15 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
 
             <button
               type="button"
-              onClick={logout}
+              onClick={() => {
+                logout();
+                navigate('/admin/login');
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-error border border-error/20 text-xs font-semibold transition-colors"
               title="Sign Out / ውጣ"
-              className="p-2 rounded-xl bg-surface-container-low hover:bg-surface-container text-outline hover:text-error transition-colors"
             >
-              <span className="material-symbols-outlined text-[19px]">logout</span>
+              <span className="material-symbols-outlined text-[17px]">logout</span>
+              <span className="hidden sm:inline">Sign Out / ውጣ</span>
             </button>
           </div>
         </header>

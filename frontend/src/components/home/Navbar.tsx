@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { LanguageToggle } from '../common/LanguageToggle';
 
@@ -8,7 +8,8 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ onBookClick }) => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
+  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -165,18 +166,38 @@ export const Navbar: React.FC<NavbarProps> = ({ onBookClick }) => {
             <LanguageToggle />
           </div>
 
-          {/* Account / Sign In Link */}
-          <Link
-            to={isAuthenticated ? (user?.role === 'EMPLOYEE' ? '/staff/dashboard' : user?.role === 'OWNER' || user?.role === 'BRANCH_ADMIN' ? '/admin/appointments' : '/account/profile') : '/login'}
-            className="text-stone-300 hover:text-brand-gold text-xs font-medium uppercase tracking-wider flex items-center gap-1.5 px-2 py-1.5 transition-colors"
-          >
-            <span className="material-symbols-outlined text-[18px]">
-              {isAuthenticated ? 'account_circle' : 'login'}
-            </span>
-            <span className="hidden xl:inline">
-              {isAuthenticated ? (user?.firstName || 'Account') : 'Sign In'}
-            </span>
-          </Link>
+          {/* Account / Sign In & Sign Out */}
+          {isAuthenticated ? (
+            <div className="flex items-center gap-2">
+              <Link
+                to={user?.role === 'EMPLOYEE' ? '/staff/dashboard' : user?.role === 'OWNER' || user?.role === 'BRANCH_ADMIN' ? '/admin/appointments' : '/account/profile'}
+                className="text-stone-200 hover:text-brand-gold text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#181412] border border-brand-gold/20 transition-colors"
+              >
+                <span className="material-symbols-outlined text-[17px] text-brand-gold">account_circle</span>
+                <span className="max-w-[110px] truncate">{user?.firstName || 'Patron'}</span>
+              </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  logout();
+                  navigate('/login');
+                }}
+                className="text-xs font-medium text-red-400 hover:text-red-300 px-2.5 py-1.5 rounded-lg border border-red-900/60 hover:bg-red-950/30 flex items-center gap-1 transition-colors"
+                title="Sign Out / ውጣ"
+              >
+                <span className="material-symbols-outlined text-[16px]">logout</span>
+                <span className="hidden xl:inline">Sign Out / ውጣ</span>
+              </button>
+            </div>
+          ) : (
+            <Link
+              to="/login"
+              className="text-stone-300 hover:text-brand-gold text-xs font-medium uppercase tracking-wider flex items-center gap-1.5 px-2 py-1.5 transition-colors"
+            >
+              <span className="material-symbols-outlined text-[18px]">login</span>
+              <span className="hidden xl:inline">Sign In / ግባ</span>
+            </Link>
+          )}
 
           {/* Desktop CTA Button */}
           <a
@@ -233,17 +254,43 @@ export const Navbar: React.FC<NavbarProps> = ({ onBookClick }) => {
           <div className="pt-3 border-t border-stone-800 flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <LanguageToggle />
-              <Link
-                to={isAuthenticated ? (user?.role === 'EMPLOYEE' ? '/staff/dashboard' : user?.role === 'OWNER' || user?.role === 'BRANCH_ADMIN' ? '/admin/appointments' : '/account/profile') : '/login'}
-                className="text-brand-gold text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <span className="material-symbols-outlined text-[18px]">
-                  {isAuthenticated ? 'account_circle' : 'login'}
-                </span>
-                <span>{isAuthenticated ? (user?.firstName || 'Account') : 'Sign In / ግባ'}</span>
-              </Link>
+              {!isAuthenticated && (
+                <Link
+                  to="/login"
+                  className="text-brand-gold text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <span className="material-symbols-outlined text-[18px]">login</span>
+                  <span>Sign In / ግባ</span>
+                </Link>
+              )}
             </div>
+
+            {isAuthenticated && (
+              <div className="flex items-center justify-between p-2 rounded-lg bg-[#181412] border border-brand-gold/20">
+                <Link
+                  to={user?.role === 'EMPLOYEE' ? '/staff/dashboard' : user?.role === 'OWNER' || user?.role === 'BRANCH_ADMIN' ? '/admin/appointments' : '/account/profile'}
+                  className="text-stone-200 text-xs font-semibold uppercase tracking-wider flex items-center gap-2"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <span className="material-symbols-outlined text-[18px] text-brand-gold">account_circle</span>
+                  <span>{user?.firstName || 'Patron'}</span>
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    logout();
+                    navigate('/login');
+                  }}
+                  className="text-xs font-semibold text-red-400 hover:text-red-300 px-2.5 py-1 rounded border border-red-900/60 hover:bg-red-950/30 flex items-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-sm">logout</span>
+                  <span>Sign Out / ውጣ</span>
+                </button>
+              </div>
+            )}
+
             <a
               href="#book"
               onClick={handleBookClick}
@@ -257,4 +304,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onBookClick }) => {
     </header>
   );
 };
+
+export default Navbar;
 

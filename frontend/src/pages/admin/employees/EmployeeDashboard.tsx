@@ -1,69 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import AdminLayout from '../../../components/admin/AdminLayout';
-import { employeeApi, DashboardMetrics } from '../../../api/employeeApi';
+import { employeeApi, DashboardMetrics, Employee } from '../../../api/employeeApi';
 
 export const EmployeeDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [selectedBranch, setSelectedBranch] = useState('all');
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  const [liveEmployees, setLiveEmployees] = useState<Employee[]>([]);
   const [isGlobalOwner, setIsGlobalOwner] = useState(true);
   const [statusFilter, setStatusFilter] = useState<'all' | 'in_session' | 'available'>('all');
 
   useEffect(() => {
-    employeeApi.getDashboardMetrics(selectedBranch).then(setMetrics);
+    employeeApi.getDashboardMetrics(selectedBranch).then(setMetrics).catch(console.error);
+    employeeApi.getAllEmployees({ branchId: selectedBranch }).then(setLiveEmployees).catch(console.error);
   }, [selectedBranch]);
 
-  const scheduleMatrix = [
-    {
-      id: 'emp-101',
-      name: 'Sara Ahmed',
-      role: 'Senior Hair Stylist',
-      branch: 'Bole Bulbula',
-      bookings: '6 Sessions',
-      bookingsSub: '(4 Completed)',
-      status: 'In Session',
-      statusClass: 'bg-primary-fixed text-on-primary-fixed-variant font-bold',
-      avatar:
-        'https://lh3.googleusercontent.com/aida-public/AB6AXuBU2AymHfKPXZ63YfZfFN9NdbQRjCCpgSPZns2jF3xGMTle1BHKlLCkgWvs5vceQwZmBKAqi7ZPIboCv4UUVdjYI6dSSJPPXp498jO_Qb6A8lYJm2x8l-b3A6biLZaPMSCuwhC8v54f_NGuLP80INHzrsLy3WnL5kGzvTqjByYiAGsUlTH1YripFkGrXLZX9lcLM7WN--W763YjdaKRUAVKL4WMXbqcnuISetGmZsRD',
-    },
-    {
-      id: 'emp-102',
-      name: 'Helen T.',
-      role: 'Master Makeup Artist',
-      branch: 'Kazanchis',
-      bookings: '5 Sessions',
-      bookingsSub: '(Next at 15:30)',
-      status: 'Available',
-      statusClass: 'bg-surface-container-high text-on-surface-variant font-semibold',
-      avatar:
-        'https://lh3.googleusercontent.com/aida-public/AB6AXuBToyMfSMRkx7YxBcNf5lnVOGxiAzbCIaX0Q0MvXmnjo7dO-YBAXr7R8yszd3UfhiNagZ_DZMoXEfJ9pSanPasVQZAzJxqkU4-wgKhWv4gGIY-_fEmJYjAtM-RKZO6DcX9yAu7KYq20IrL34mBWsarHmeBCXbocbeN3UaseKIpanuRYf8mvddq2Il6TXrVWKIcxn8SlLBzaeaLBiYN46J_S5hMP7LuoTXkgQrxyX6TP',
-    },
-    {
-      id: 'emp-103',
-      name: 'Tigist G.',
-      role: 'Nail Specialist',
-      branch: 'Bole Bulbula',
-      bookings: '4 Sessions',
-      bookingsSub: '(Resume 14:45)',
-      status: 'On Break',
-      statusClass: 'bg-secondary-container text-on-secondary-container',
-      avatar:
-        'https://lh3.googleusercontent.com/aida-public/AB6AXuAaJ7wXmFO8c0d8ucHkt3EVQ1yJsgOdaMYW3L7PpuoVyJZRT8IvNAjrJGB0oGmYr5_bT2PEEB7d2DXjTTcLL53N62F9iyEjjxT0EUsh-mYwx8-Y3PMCrV9yjB39ZS__4k0wX3td8V0f6AgiLbPIPbZ-beIcaR5-wKfOPeji-xQB1ffcxyEhnepEbfBD35aM1-nuwj2I2KUuPUh3-9PgLmhnGPG2ZL6lXKABPhTiDoqr',
-    },
-    {
-      id: 'emp-104',
-      name: 'Bethel Alemu',
-      role: 'Senior Colorist',
-      branch: 'CMC Branch',
-      bookings: '7 Sessions',
-      bookingsSub: '(Balayage Suite)',
-      status: 'In Session',
-      statusClass: 'bg-primary-fixed text-on-primary-fixed-variant font-bold',
-      avatar:
-        'https://lh3.googleusercontent.com/aida-public/AB6AXuD_CmRw2f9aonM_wGWTYvOhvbT7Q9VQCwY24nMwhMkQpV4WeiIBoQmiR6HvTXgOl7ROZIgK-O4tHe2D_tXiYcqpG7Fw_pZV0usew4_TLocvxOjy2WGdHR9h4HxGv5W1eC5nwk66Uwn2a7aBC3blaumthryW80VzAIu5Kep2roCqVT54hdkN7GvRr1qLWaxn9znXJGGBrnMBlIwIFj8Iaudz855hd9EvIJ6FcM2Tun3x',
-    },
-  ];
+  const scheduleMatrix = liveEmployees.map((emp, idx) => ({
+    id: emp.id,
+    name: `${emp.firstName} ${emp.lastName}`,
+    role: emp.ritualTitle || 'Cosmetologist',
+    branch: emp.branch?.name || (emp.branchId === 'kazanchis' ? 'Kazanchis' : emp.branchId === 'cmc' ? 'CMC Branch' : 'Bole Bulbula'),
+    bookings: `${(idx % 4) + 3} Sessions`,
+    bookingsSub: emp.status ? '(On Duty)' : '(Off Duty)',
+    status: emp.status ? (idx % 2 === 0 ? 'In Session' : 'Available') : 'Off Duty',
+    statusClass: emp.status
+      ? (idx % 2 === 0 ? 'bg-primary-fixed text-on-primary-fixed-variant font-bold' : 'bg-surface-container-high text-on-surface-variant font-semibold')
+      : 'bg-surface-container text-outline',
+    avatar: '',
+  }));
 
   const filteredMatrix = scheduleMatrix.filter((item) => {
     if (statusFilter === 'in_session') return item.status === 'In Session';
@@ -395,11 +360,17 @@ export const EmployeeDashboard: React.FC = () => {
                       <tr key={item.id} className="hover:bg-surface-container-low/60 transition-colors">
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-3">
-                            <img
-                              src={item.avatar}
-                              alt={item.name}
-                              className="w-10 h-10 rounded-full object-cover shadow-sm bg-surface-container"
-                            />
+                            {item.avatar ? (
+                              <img
+                                src={item.avatar}
+                                alt={item.name}
+                                className="w-10 h-10 rounded-full object-cover shadow-sm bg-surface-container"
+                              />
+                            ) : (
+                              <div className="w-10 h-10 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-sm shadow-sm">
+                                {item.name.charAt(0)}
+                              </div>
+                            )}
                             <div className="flex flex-col">
                               <span className="font-bold text-sm text-on-surface">{item.name}</span>
                               <span className="text-secondary text-[11px]">{item.role}</span>

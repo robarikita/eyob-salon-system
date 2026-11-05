@@ -6,11 +6,11 @@ import { LanguageToggle } from '../../components/common/LanguageToggle';
 import { authApi } from '../../api/authApi';
 
 export const AdminLoginPage: React.FC = () => {
-  const { login, loginWithDemo } = useAuth();
+  const { login } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
 
-  const [username, setUsername] = useState('admin@eyobsalon.com');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [otp, setOtp] = useState<string[]>(['', '', '', '', '', '']);
@@ -53,18 +53,11 @@ export const AdminLoginPage: React.FC = () => {
 
       login(user, tokens.accessToken);
       navigate('/admin/appointments', { replace: true });
-    } catch {
-      // If direct backend credentials fail, enable seamless fallback for admin clearance
-      loginWithDemo(username.includes('owner') ? 'OWNER' : 'BRANCH_ADMIN');
-      navigate('/admin/appointments', { replace: true });
+    } catch (err: any) {
+      setError(err.message || 'Authorization failed. Please check your administrative credentials.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleDemoAdmin = (role: 'BRANCH_ADMIN' | 'OWNER') => {
-    loginWithDemo(role);
-    navigate('/admin/appointments', { replace: true });
   };
 
   return (
@@ -178,29 +171,6 @@ export const AdminLoginPage: React.FC = () => {
               </button>
             </div>
           </form>
-
-          {/* Quick Clearance Chips */}
-          <div className="mt-8 pt-5 border-t border-[#D4AF37]/15">
-            <div className="text-[10px] uppercase tracking-widest text-stone-500 text-center mb-2.5 font-medium">
-              Administrative Clearance / የአስተዳደር ፈቃድ
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <button
-                type="button"
-                onClick={() => handleDemoAdmin('BRANCH_ADMIN')}
-                className="py-1.5 px-2 rounded bg-black/40 border border-[#3A332C] hover:border-[#D4AF37]/50 text-stone-300 hover:text-[#D4AF37] transition text-center"
-              >
-                Bole Branch Admin
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDemoAdmin('OWNER')}
-                className="py-1.5 px-2 rounded bg-black/40 border border-[#3A332C] hover:border-[#D4AF37]/50 text-stone-300 hover:text-[#D4AF37] transition text-center"
-              >
-                Proprietor (Owner)
-              </button>
-            </div>
-          </div>
         </div>
       </main>
 
@@ -213,3 +183,4 @@ export const AdminLoginPage: React.FC = () => {
 };
 
 export default AdminLoginPage;
+

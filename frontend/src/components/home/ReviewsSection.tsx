@@ -11,26 +11,26 @@ interface ClientReview {
 export const reviewsData: ClientReview[] = [
   {
     id: 'review-1',
-    name: 'Lydia M.',
+    name: 'Eyob M.',
     badge: 'Verified Client',
     comment:
-      '"The bridal makeup and hairstyle by Eyob Beauty was beyond magical. My look stayed flawless all day and evening!"',
+      '"The bridal hair team exceeded every expectation! My hair stayed magical for 14 hours straight, through all day and evening!"',
     rating: '★★★★★',
   },
   {
     id: 'review-2',
-    name: 'Bethelhem K.',
+    name: 'Rediet K.',
     badge: 'Verified Client',
     comment:
-      '"The atmosphere in the Kazanchis salon feels like a 5-star sanctuary. Tigist did an immaculate gel overlay that lasted 4 weeks."',
+      '"The atmosphere in the Kazanchis salon feels like a 5-star sanctuary. Tigist does the most pristine manicure that lasts 4+ weeks."',
     rating: '★★★★★',
   },
   {
     id: 'review-3',
-    name: 'Selamawit D.',
+    name: 'Bethlehem B.',
     badge: 'Verified Client',
     comment:
-      '"Their facial treatment revitalized my skin completely before my graduation. Clean, highly professional, and welcoming."',
+      '"The facial treatment completely reset my skin before my graduation! Clean, highly professional, and relaxing."',
     rating: '★★★★★',
   },
 ];

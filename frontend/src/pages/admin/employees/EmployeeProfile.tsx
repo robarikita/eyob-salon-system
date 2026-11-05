@@ -130,7 +130,7 @@ export const EmployeeProfile: React.FC = () => {
             <div className="flex flex-wrap items-center gap-2 pt-2 xl:pt-0">
               <button
                 type="button"
-                onClick={() => navigate(`/admin/employees/${employee?.id || 'emp-101'}/schedule`)}
+                onClick={() => employee?.id && navigate(`/admin/employees/${employee.id}/schedule`)}
                 className="px-4 py-2 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-bold uppercase tracking-wider transition-colors flex items-center gap-1.5 shadow-sm"
               >
                 <span className="material-symbols-outlined text-[17px]">calendar_today</span>
@@ -148,7 +148,7 @@ export const EmployeeProfile: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => navigate(`/admin/employees/${employee?.id || 'emp-101'}/services`)}
+                onClick={() => employee?.id && navigate(`/admin/employees/${employee.id}/services`)}
                 className="px-5 py-2 rounded-xl bg-primary-container hover:bg-primary-fixed-dim text-on-primary-container text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md"
               >
                 <span className="material-symbols-outlined text-[17px]">add_circle</span>
@@ -171,14 +171,14 @@ export const EmployeeProfile: React.FC = () => {
               Profile Overview
             </button>
             <button
-              onClick={() => navigate(`/admin/employees/${employee?.id || 'emp-101'}/services`)}
+              onClick={() => employee?.id && navigate(`/admin/employees/${employee.id}/services`)}
               className="py-3 px-4 text-secondary hover:text-on-surface transition-colors flex items-center gap-2 whitespace-nowrap"
             >
               <span className="material-symbols-outlined text-[16px]">spa</span>
-              Assigned Services (8)
+              Assigned Services
             </button>
             <button
-              onClick={() => navigate(`/admin/employees/${employee?.id || 'emp-101'}/schedule`)}
+              onClick={() => employee?.id && navigate(`/admin/employees/${employee.id}/schedule`)}
               className="py-3 px-4 text-secondary hover:text-on-surface transition-colors flex items-center gap-2 whitespace-nowrap"
             >
               <span className="material-symbols-outlined text-[16px]">schedule</span>
@@ -245,7 +245,7 @@ export const EmployeeProfile: React.FC = () => {
                   </div>
                 </div>
                 <button
-                  onClick={() => navigate(`/admin/employees/${employee?.id || 'emp-101'}/services`)}
+                  onClick={() => employee?.id && navigate(`/admin/employees/${employee.id}/services`)}
                   className="text-xs font-bold text-primary uppercase tracking-wider hover:underline"
                 >
                   Manage All (8)

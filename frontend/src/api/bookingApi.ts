@@ -103,21 +103,15 @@ export const bookingApi = {
       search.append('date', params.date);
 
       const res = await fetch(`${API_BASE}/bookings/availability?${search.toString()}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const errorJson = await res.json().catch(() => null);
+        throw new Error(errorJson?.message || `Availability query failed (HTTP ${res.status})`);
+      }
       const json = await res.json();
       return json.data;
-    } catch {
-      // Mock slots for fallback / demo
-      return {
-        date: params.date,
-        branchId: params.branchId,
-        serviceDuration: 90,
-        turnaroundBuffer: 15,
-        availableSlots: [
-          '09:00', '09:30', '10:00', '10:30', '11:00',
-          '13:00', '13:30', '14:00', '14:30', '15:30', '16:00', '17:00'
-        ],
-      };
+    } catch (err: any) {
+      console.error('Error fetching availability:', err);
+      throw err;
     }
   },
 

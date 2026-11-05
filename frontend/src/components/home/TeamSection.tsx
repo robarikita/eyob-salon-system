@@ -15,24 +15,24 @@ export const teamMembers: TeamMember[] = [
     name: 'Sara Ahmed',
     role: 'Senior Hair Stylist',
     rating: '★★★★★',
-    reviewsCount: '(4.9/5)',
-    bio: '10+ years crafting haute bridal styles, precision cuts, and radiant coloring.',
+    reviewsCount: '(490)',
+    bio: '10 years crafting look bold styles, precision cuts, and radiant coloring.',
   },
   {
     initials: 'HT',
     name: 'Helen T.',
     role: 'Master Makeup Artist',
     rating: '★★★★★',
-    reviewsCount: '(5.0/5)',
-    bio: 'Celebrity and editorial glamour specialist emphasizing flawless, natural skin glow.',
+    reviewsCount: '(510)',
+    bio: 'Celebrity and editorial glamour specialist emphasizing flawless natural skin glow.',
   },
   {
     initials: 'TG',
     name: 'Tigist G.',
     role: 'Nail Specialist',
     rating: '★★★★★',
-    reviewsCount: '(4.9/5)',
-    bio: 'Creative nail architect specializing in modern Russian manicures and custom art.',
+    reviewsCount: '(475)',
+    bio: 'Creative nail artist and precision technician. Russian manicures and custom art.',
   },
 ];
 
@@ -48,7 +48,7 @@ export const TeamSection: React.FC = () => {
             Meet Our Team
           </h2>
           <p className="text-stone-600 text-sm sm:text-base mt-2">
-            Dedicated professionals with years of artistry to transform your look.
+            Dedicated professionals with years of artistry to transform your look
           </p>
         </div>
 

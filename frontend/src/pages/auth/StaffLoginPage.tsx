@@ -6,7 +6,7 @@ import { LanguageToggle } from '../../components/common/LanguageToggle';
 import { authApi } from '../../api/authApi';
 
 export const StaffLoginPage: React.FC = () => {
-  const { login, loginWithDemo } = useAuth();
+  const { login } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
 
@@ -29,32 +29,16 @@ export const StaffLoginPage: React.FC = () => {
         : { identifier: staffId.trim(), password: pin };
 
       const { user, tokens } = await authApi.login(payload);
+      if (user.role !== 'EMPLOYEE' && user.role !== 'BRANCH_ADMIN' && user.role !== 'OWNER') {
+        throw new Error('Access denied. Floor specialist credentials required.');
+      }
       login({ ...user, workstation }, tokens.accessToken);
       navigate('/staff/dashboard', { replace: true });
-    } catch {
-      // If direct backend credentials fail, allow seamless specialist demo login
-      loginWithDemo('EMPLOYEE');
-      navigate('/staff/dashboard', { replace: true });
+    } catch (err: any) {
+      setError(err.message || 'Invalid Staff ID or PIN. Please check your credentials.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleQuickSpecialist = (name: string, roleStation: string, phone: string) => {
-    login(
-      {
-        id: `emp-${name.toLowerCase()}`,
-        firstName: name,
-        lastName: 'Specialist',
-        phone,
-        email: `${name.toLowerCase()}@eyobbeauty.com`,
-        role: 'EMPLOYEE',
-        branchId: 'bole',
-        workstation: roleStation,
-      },
-      'eyob-demo-token-employee'
-    );
-    navigate('/staff/dashboard', { replace: true });
   };
 
   return (
@@ -172,36 +156,6 @@ export const StaffLoginPage: React.FC = () => {
               <span>{loading ? '...' : t('actions.clockIn')}</span>
             </button>
           </form>
-
-          {/* Quick Specialist Selectors */}
-          <div className="mt-8 pt-5 border-t border-[#D4AF37]/15">
-            <div className="text-[10px] uppercase tracking-widest text-stone-500 text-center mb-2.5 font-medium">
-              Quick Specialist Sign-In / ፈጣን መግቢያ
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-xs">
-              <button
-                type="button"
-                onClick={() => handleQuickSpecialist('Sara', 'Hair', '+251911234567')}
-                className="py-1.5 px-2 rounded bg-black/40 border border-stone-800 hover:border-[#D4AF37]/50 text-stone-300 hover:text-[#D4AF37] transition text-center"
-              >
-                Sara (Hair)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickSpecialist('Helen', 'Makeup', '+251928841920')}
-                className="py-1.5 px-2 rounded bg-black/40 border border-stone-800 hover:border-[#D4AF37]/50 text-stone-300 hover:text-[#D4AF37] transition text-center"
-              >
-                Helen (Makeup)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickSpecialist('Tigist', 'Nails', '+251934009811')}
-                className="py-1.5 px-2 rounded bg-black/40 border border-stone-800 hover:border-[#D4AF37]/50 text-stone-300 hover:text-[#D4AF37] transition text-center"
-              >
-                Tigist (Nails)
-              </button>
-            </div>
-          </div>
         </div>
       </main>
 
@@ -214,3 +168,4 @@ export const StaffLoginPage: React.FC = () => {
 };
 
 export default StaffLoginPage;
+

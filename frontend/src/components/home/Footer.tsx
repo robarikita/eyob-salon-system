@@ -77,7 +77,7 @@ export const Footer: React.FC = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 lg:px-12 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <p>© 2025 Eyob Beauty Salon &amp; Spa. All rights reserved.</p>
+        <p>© 2026 Eyob Beauty Salon &amp; Spa. All rights reserved.</p>
         <div className="flex items-center space-x-6 text-stone-400">
           <a href="#" className="hover:text-brand-gold transition-colors">
             Privacy Policy

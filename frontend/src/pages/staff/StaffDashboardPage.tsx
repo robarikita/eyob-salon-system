@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { bookingApi, BookingDTO } from '../../api/bookingApi';
+import { useAuth } from '../../context/AuthContext';
+import { LanguageToggle } from '../../components/common/LanguageToggle';
 
 export const StaffDashboardPage: React.FC = () => {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [appointments, setAppointments] = useState<BookingDTO[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -50,25 +54,48 @@ export const StaffDashboardPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#FAF7F2] text-[#1C1C19] flex flex-col font-sans">
       {/* Staff Header */}
-      <header className="bg-[#0E0B09] text-[#FAF7F2] border-b border-[#2C2724] px-4 lg:px-12 py-4 flex items-center justify-between sticky top-0 z-40">
+      <header className="bg-[#0E0B09] text-[#FAF7F2] border-b border-[#2C2724] px-4 lg:px-12 py-3.5 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-3">
           <Link to="/" className="text-xl font-serif tracking-widest text-[#D4AF37] font-bold">
             EYOB <span className="text-xs uppercase tracking-normal font-sans text-stone-400 block -mt-1">Staff Floor Portal</span>
           </Link>
-          <span className="hidden sm:inline-block px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-[#181412] text-[#D4AF37] border border-[#D4AF37]/40">
-            Specialist View
-          </span>
         </div>
 
-        <nav className="flex items-center gap-4 text-xs font-semibold">
-          <Link to="/staff/availability" className="text-stone-300 hover:text-[#D4AF37] flex items-center gap-1.5 transition">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <LanguageToggle />
+
+          <Link to="/staff/availability" className="text-stone-300 hover:text-[#D4AF37] flex items-center gap-1.5 text-xs font-semibold transition hidden md:flex">
             <span className="material-symbols-outlined text-sm">event_available</span>
-            My Availability & Shifts
+            My Shifts
           </Link>
-          <Link to="/admin/appointments" className="text-stone-400 hover:text-white hidden md:block">
-            Admin Console
-          </Link>
-        </nav>
+
+          {/* Specialist Name & Assigned Workstation Badge */}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#181412] border border-[#D4AF37]/30 text-xs">
+            <span className="material-symbols-outlined text-base text-[#D4AF37]">badge</span>
+            <div className="flex flex-col text-left">
+              <span className="font-bold text-stone-100 leading-tight">
+                {user ? `${user.firstName} ${user.lastName}` : 'Specialist'}
+              </span>
+              <span className="text-[10px] text-[#D4AF37] leading-none uppercase tracking-wider font-semibold">
+                {user?.workstation || 'Floor Specialist'}
+              </span>
+            </div>
+          </div>
+
+          {/* Sign Out Action */}
+          <button
+            type="button"
+            onClick={() => {
+              logout();
+              navigate('/staff/login');
+            }}
+            className="px-2.5 py-1.5 rounded-lg border border-red-900/60 text-red-400 hover:text-red-300 hover:border-red-700 hover:bg-red-950/30 text-xs font-semibold transition flex items-center gap-1"
+            title="Sign Out / ውጣ"
+          >
+            <span className="material-symbols-outlined text-[16px]">logout</span>
+            <span className="hidden sm:inline">Sign Out / ውጣ</span>
+          </button>
+        </div>
       </header>
 
       {/* Main Content */}

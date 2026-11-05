@@ -519,6 +519,17 @@ export const MOCK_SERVICES: ServiceRitual[] = [
 
 const API_BASE = '/api/v1';
 
+const getAuthHeaders = (): Record<string, string> => {
+  const token =
+    localStorage.getItem('token') ||
+    localStorage.getItem('accessToken') ||
+    localStorage.getItem('eyob_auth_token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+};
+
 export const serviceApi = {
   /**
    * List all service rituals with optional category, search, and branch filters
@@ -529,164 +540,86 @@ export const serviceApi = {
     branchId?: string;
     isActive?: boolean | string;
   }): Promise<ServiceRitual[]> {
-    try {
-      const searchParams = new URLSearchParams();
-      if (params?.search) searchParams.append('search', params.search);
-      if (params?.category && params.category !== 'All') searchParams.append('category', params.category);
-      if (params?.branchId && params.branchId !== 'all') searchParams.append('branchId', params.branchId);
-      if (params?.isActive !== undefined) searchParams.append('isActive', String(params.isActive));
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.append('search', params.search);
+    if (params?.category && params.category !== 'All') searchParams.append('category', params.category);
+    if (params?.branchId && params.branchId !== 'all') searchParams.append('branchId', params.branchId);
+    if (params?.isActive !== undefined) searchParams.append('isActive', String(params.isActive));
 
-      const res = await fetch(`${API_BASE}/services?${searchParams.toString()}`);
-      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-      const json = await res.json();
-      return json.data || json;
-    } catch {
-      // Local fallback with filtering
-      let result = [...MOCK_SERVICES];
-      if (params?.category && params.category !== 'All') {
-        result = result.filter((s) => s.category.toLowerCase().includes(params.category!.toLowerCase()));
-      }
-      if (params?.search) {
-        const query = params.search.toLowerCase();
-        result = result.filter(
-          (s) =>
-            s.name.toLowerCase().includes(query) ||
-            s.code.toLowerCase().includes(query) ||
-            (s.amharicName && s.amharicName.includes(query)) ||
-            (s.subCategory && s.subCategory.toLowerCase().includes(query))
-        );
-      }
-      if (params?.isActive !== undefined && params.isActive !== '') {
-        const target = String(params.isActive) === 'true';
-        result = result.filter((s) => s.status === target);
-      }
-      return result;
+    const res = await fetch(`${API_BASE}/services?${searchParams.toString()}`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to load rituals from database (HTTP ${res.status})`);
     }
+    const json = await res.json();
+    return json.data || json;
   },
 
   /**
    * Get dynamic distinct category aggregations with service counts
    */
   async getCategories(branchId?: string): Promise<Array<{ name: string; count: number }>> {
-    try {
-      const url = branchId ? `${API_BASE}/services/categories?branchId=${branchId}` : `${API_BASE}/services/categories`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-      const json = await res.json();
-      return json.data || json;
-    } catch {
-      // Local aggregation fallback
-      const catMap = new Map<string, number>();
-      for (const s of MOCK_SERVICES) {
-        catMap.set(s.category, (catMap.get(s.category) || 0) + 1);
-      }
-      return Array.from(catMap.entries()).map(([name, count]) => ({ name, count }));
+    const url = branchId && branchId !== 'all' ? `${API_BASE}/services/categories?branchId=${branchId}` : `${API_BASE}/services/categories`;
+    const res = await fetch(url, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to load categories (HTTP ${res.status})`);
     }
+    const json = await res.json();
+    return json.data || json;
   },
 
   /**
    * Retrieve single ritual specification dossier by ID or Code
    */
   async getServiceById(idOrCode: string, branchId?: string): Promise<ServiceRitual> {
-    try {
-      const url = branchId
-        ? `${API_BASE}/services/${idOrCode}?branchId=${branchId}`
-        : `${API_BASE}/services/${idOrCode}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-      const json = await res.json();
-      return json.data || json;
-    } catch {
-      const found = MOCK_SERVICES.find(
-        (s) => s.id === idOrCode || s.code.toLowerCase() === idOrCode.toLowerCase()
-      );
-      if (found) return found;
-      return MOCK_SERVICES[0];
+    const url = branchId && branchId !== 'all'
+      ? `${API_BASE}/services/${idOrCode}?branchId=${branchId}`
+      : `${API_BASE}/services/${idOrCode}`;
+    const res = await fetch(url, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      throw new Error(`Ritual ${idOrCode} not found in database (HTTP ${res.status})`);
     }
+    const json = await res.json();
+    return json.data || json;
   },
 
   /**
    * Curate / Create new service ritual (OWNER clearance)
    */
   async createService(payload: CreateServicePayload): Promise<ServiceRitual> {
-    try {
-      const token = localStorage.getItem('eyob_auth_token');
-      const res = await fetch(`${API_BASE}/services`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.message || `Creation failed with status ${res.status}`);
-      }
-      const json = await res.json();
-      return json.data || json;
-    } catch (err: any) {
-      // Mock creation locally
-      const newRitual: ServiceRitual = {
-        id: `srv-${Date.now()}`,
-        code: payload.code,
-        name: payload.name,
-        amharicName: payload.amharicName,
-        category: payload.category,
-        subCategory: payload.subCategory,
-        description: payload.description,
-        imageUrl: payload.imageUrl,
-        basePrice: payload.basePrice,
-        durationMinutes: payload.durationMinutes,
-        preSetupBuffer: payload.preSetupBuffer || 0,
-        turnaroundBuffer: payload.turnaroundBuffer || 15,
-        workstationType: payload.workstationType,
-        minGuildRank: payload.minGuildRank,
-        requiresApprentice: !!payload.requiresApprentice,
-        requiredProtocols: payload.requiredProtocols || [],
-        standardCommission: payload.standardCommission || 18,
-        status: true,
-        branchServices: (payload.branchIds || ['b-bole', 'b-kazanchis', 'b-cmc']).map((bId) => ({
-          branchId: bId,
-          serviceId: `srv-${Date.now()}`,
-          customPrice: payload.basePrice,
-          customDurationMinutes: payload.durationMinutes,
-          customTurnaround: payload.turnaroundBuffer || 15,
-          requiredDeposit: Math.round(payload.basePrice * 0.3),
-          workstationLock: null,
-          isActive: true,
-        })),
-      };
-      MOCK_SERVICES.unshift(newRitual);
-      return newRitual;
+    const res = await fetch(`${API_BASE}/services`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Service curation failed with status ${res.status}`);
     }
+    const json = await res.json();
+    return json.data || json;
   },
 
   /**
    * Update master global service specification
    */
   async updateService(id: string, payload: Partial<CreateServicePayload>): Promise<ServiceRitual> {
-    try {
-      const token = localStorage.getItem('eyob_auth_token');
-      const res = await fetch(`${API_BASE}/services/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-      const json = await res.json();
-      return json.data || json;
-    } catch {
-      const idx = MOCK_SERVICES.findIndex((s) => s.id === id);
-      if (idx !== -1) {
-        MOCK_SERVICES[idx] = { ...MOCK_SERVICES[idx], ...payload };
-        return MOCK_SERVICES[idx];
-      }
-      return MOCK_SERVICES[0];
+    const res = await fetch(`${API_BASE}/services/${id}`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Service update failed (${res.status})`);
     }
+    const json = await res.json();
+    return json.data || json;
   },
 
   /**
@@ -697,43 +630,17 @@ export const serviceApi = {
     branchId: string,
     payload: UpdateBranchRulePayload
   ): Promise<BranchServiceRule> {
-    try {
-      const token = localStorage.getItem('eyob_auth_token');
-      const res = await fetch(`${API_BASE}/services/${serviceId}/branches/${branchId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.message || `Governance update failed (${res.status})`);
-      }
-      const json = await res.json();
-      return json.data || json;
-    } catch (err: any) {
-      // Mock branch rule update locally
-      const s = MOCK_SERVICES.find((serv) => serv.id === serviceId);
-      if (s && s.branchServices) {
-        const rule = s.branchServices.find((b) => b.branchId === branchId);
-        if (rule) {
-          Object.assign(rule, payload);
-          return rule;
-        }
-      }
-      return {
-        branchId,
-        serviceId,
-        customPrice: payload.customPrice ?? null,
-        customDurationMinutes: payload.customDurationMinutes ?? null,
-        customTurnaround: payload.customTurnaround ?? 15,
-        requiredDeposit: payload.requiredDeposit ?? null,
-        workstationLock: payload.workstationLock ?? null,
-        isActive: payload.isActive ?? true,
-      };
+    const res = await fetch(`${API_BASE}/services/${serviceId}/branches/${branchId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Governance update failed (${res.status})`);
     }
+    const json = await res.json();
+    return json.data || json;
   },
 
   /**
@@ -744,94 +651,31 @@ export const serviceApi = {
     warningCount: number;
     message: string;
   }> {
-    try {
-      const token = localStorage.getItem('eyob_auth_token');
-      const res = await fetch(`${API_BASE}/services/${id}/toggle-status`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
-      if (!res.ok) throw new Error(`Status toggle failed (${res.status})`);
-      const json = await res.json();
-      return json.data || json;
-    } catch {
-      const serv = MOCK_SERVICES.find((s) => s.id === id);
-      if (serv) {
-        serv.status = !serv.status;
-        return {
-          service: serv,
-          warningCount: serv.status ? 0 : 3,
-          message: serv.status
-            ? 'Service ritual reactivated across sanctuaries'
-            : 'Ritual deactivated. 3 future guest reservations preserved.',
-        };
-      }
-      throw new Error('Service not found');
+    const res = await fetch(`${API_BASE}/services/${id}/toggle-status`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Status toggle failed (${res.status})`);
     }
+    const json = await res.json();
+    return json.data || json;
   },
 
   /**
    * Get Branch Governance Engine Overview & Analytics
    */
   async getBranchGovernance(branchSlugOrId: string = 'bole-bulbula'): Promise<BranchGovernanceData> {
-    try {
-      const token = localStorage.getItem('eyob_auth_token');
-      const res = await fetch(`${API_BASE}/services/governance/${branchSlugOrId}`, {
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
-      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-      const json = await res.json();
-      return json.data || json;
-    } catch {
-      // Mock governance data matching design
-      const isBole = branchSlugOrId.includes('bole');
-      const isKazanchis = branchSlugOrId.includes('kazan');
-
-      const branchName = isBole
-        ? 'Bole Bulbula Sanctuary (Morning Star Mall, 3rd Floor)'
-        : isKazanchis
-        ? 'Kazanchis VIP Sanctuary (ECA Quartier)'
-        : 'CMC Luxury Pavilions (Heights Blvd)';
-
-      const branchId = isBole ? 'b-bole' : isKazanchis ? 'b-kazanchis' : 'b-cmc';
-
-      const governedRituals = MOCK_SERVICES.map((s) => {
-        const bRule = s.branchServices?.find((br) => br.branchId === branchId) || null;
-        return {
-          ...s,
-          branchServiceRule: bRule,
-          localPrice: bRule?.customPrice ?? s.basePrice,
-          localTurnaround: bRule?.customTurnaround ?? s.turnaroundBuffer,
-          localDeposit: bRule?.requiredDeposit ?? Math.round((bRule?.customPrice ?? s.basePrice) * 0.3),
-          localWorkstation: bRule?.workstationLock || s.workstationType || 'Suite 1',
-          isBranchActive: bRule?.isActive ?? s.status,
-          localSpecialistsCount: s.assignedEmployees ? s.assignedEmployees.length : 4,
-        };
-      });
-
-      return {
-        branch: {
-          id: branchId,
-          name: branchName,
-          slug: isBole ? 'bole-bulbula' : isKazanchis ? 'kazanchis' : 'cmc',
-          address: isBole ? 'Morning Star Mall, 3rd Floor' : 'ECA Quartier',
-        },
-        metrics: {
-          totalMasterRituals: 24,
-          activeBranchRituals: isBole ? 22 : isKazanchis ? 20 : 19,
-          offeringPercentage: isBole ? 91.7 : isKazanchis ? 83.3 : 79.2,
-          averageTicketPrice: isBole ? 820 : isKazanchis ? 890 : 780,
-          dailyCapacitySlots: 48,
-          occupancyRate: 92,
-          totalQualifiedSpecialists: isBole ? 18 : isKazanchis ? 15 : 12,
-        },
-        rituals: governedRituals,
-      };
+    const res = await fetch(`${API_BASE}/services/governance/${branchSlugOrId}`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Failed to fetch governance metrics (${res.status})`);
     }
+    const json = await res.json();
+    return json.data || json;
   },
 };
 

@@ -67,7 +67,7 @@ export const ConsultationForm: React.FC<ConsultationFormProps> = ({
             Book Your Consultation
           </h2>
           <p className="text-stone-600 text-sm mt-2">
-            Reserve an appointment with your favorite stylist or request customized beauty services.
+            Reserve a spot with the stylist of your choice or request customized beauty services
           </p>
         </div>
 

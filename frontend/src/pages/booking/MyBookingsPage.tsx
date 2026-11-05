@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { bookingApi, BookingDTO } from '../../api/bookingApi';
+import { useAuth } from '../../context/AuthContext';
 import { LanguageToggle } from '../../components/common/LanguageToggle';
 
 export const MyBookingsPage: React.FC = () => {
+  const { user, isAuthenticated, logout } = useAuth();
+  const navigate = useNavigate();
   const [bookings, setBookings] = useState<BookingDTO[]>([]);
   const [activeTab, setActiveTab] = useState<'UPCOMING' | 'PAST' | 'CANCELLED'>('UPCOMING');
   const [loading, setLoading] = useState(true);
@@ -101,19 +104,47 @@ export const MyBookingsPage: React.FC = () => {
         </Link>
         <div className="flex items-center gap-3">
           <LanguageToggle />
-          <Link
-            to="/account/profile"
-            className="p-2 text-stone-400 hover:text-[#D4AF37] transition-colors"
-            title="Profile & Settings"
-          >
-            <span className="material-symbols-outlined text-xl">account_circle</span>
-          </Link>
+
+          {isAuthenticated ? (
+            <div className="flex items-center gap-2">
+              <Link
+                to="/account/profile"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#181412] text-stone-300 hover:text-[#D4AF37] border border-[#D4AF37]/20 text-xs font-semibold transition"
+                title="Profile & Settings"
+              >
+                <span className="material-symbols-outlined text-[17px] text-[#D4AF37]">account_circle</span>
+                <span className="max-w-[100px] truncate">{user?.firstName || 'Patron'}</span>
+              </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  logout();
+                  navigate('/login');
+                }}
+                className="px-2.5 py-1.5 rounded-lg border border-red-900/60 text-red-400 hover:text-red-300 hover:border-red-700 hover:bg-red-950/30 text-xs font-semibold transition flex items-center gap-1"
+                title="Sign Out / ውጣ"
+              >
+                <span className="material-symbols-outlined text-[16px]">logout</span>
+                <span className="hidden sm:inline">Sign Out / ውጣ</span>
+              </button>
+            </div>
+          ) : (
+            <Link
+              to="/login"
+              className="text-stone-300 hover:text-[#D4AF37] text-xs font-semibold uppercase tracking-wider flex items-center gap-1"
+            >
+              <span className="material-symbols-outlined text-base">login</span>
+              <span>Sign In / ግባ</span>
+            </Link>
+          )}
+
           <Link
             to="/book"
             className="px-4 py-2 rounded bg-[#D4AF37] hover:bg-[#C59A3F] text-[#0E0B09] text-xs font-bold uppercase tracking-wider transition flex items-center gap-1.5"
           >
             <span className="material-symbols-outlined text-sm">add_circle</span>
-            Reserve New Ritual
+            <span className="hidden sm:inline">Reserve New Ritual</span>
+            <span className="sm:hidden">Reserve</span>
           </Link>
         </div>
       </header>

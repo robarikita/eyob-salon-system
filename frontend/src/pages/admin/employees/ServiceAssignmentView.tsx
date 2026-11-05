@@ -189,8 +189,8 @@ export const ServiceAssignmentView: React.FC = () => {
               Employees
             </button>
             <span className="material-symbols-outlined text-[14px] text-outline">chevron_right</span>
-            <button onClick={() => navigate(`/admin/employees/${id || 'emp-101'}`)} className="hover:text-primary transition-colors">
-              Sara Ahmed (#EB-101)
+            <button onClick={() => id && navigate(`/admin/employees/${id}`)} className="hover:text-primary transition-colors">
+              Specialist Profile
             </button>
             <span className="material-symbols-outlined text-[14px] text-outline">chevron_right</span>
             <span className="text-primary font-bold">Assign Services</span>
@@ -522,7 +522,7 @@ export const ServiceAssignmentView: React.FC = () => {
             <div className="flex items-center gap-2 w-full sm:w-auto justify-end text-xs">
               <button
                 type="button"
-                onClick={() => navigate(`/admin/employees/${id || 'emp-101'}`)}
+                onClick={() => (id ? navigate(`/admin/employees/${id}`) : navigate('/admin/employees'))}
                 className="px-4 py-2.5 rounded-xl bg-surface-container-highest/20 hover:bg-surface-container-highest/30 text-surface-variant hover:text-surface-bright uppercase tracking-wider font-semibold transition-colors"
               >
                 Cancel &amp; Discard

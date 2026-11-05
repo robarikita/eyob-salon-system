@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import AdminLayout from '../../../components/admin/AdminLayout';
-import { employeeApi, Employee, MOCK_EMPLOYEES } from '../../../api/employeeApi';
+import { employeeApi, Employee } from '../../../api/employeeApi';
 
 interface DaySchedule {
   dayOfWeek: number;
@@ -31,8 +31,8 @@ export const WeeklyScheduleView: React.FC = () => {
   const navigate = useNavigate();
 
   const [currentBranch, setCurrentBranch] = useState('bole-bulbula');
-  const [employees, setEmployees] = useState<Employee[]>(MOCK_EMPLOYEES);
-  const [selectedEmpId, setSelectedEmpId] = useState<string>(id || 'emp-101');
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [selectedEmpId, setSelectedEmpId] = useState<string>(id || '');
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [scheduleDays, setScheduleDays] = useState<DaySchedule[]>(DEFAULT_DAYS);
   const [isSaving, setIsSaving] = useState(false);
