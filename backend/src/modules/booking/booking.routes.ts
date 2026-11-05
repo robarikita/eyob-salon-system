@@ -67,3 +67,4 @@ adminAppointmentRouter.use(authenticate, authorize("BRANCH_ADMIN", "OWNER"));
 adminAppointmentRouter.get("/reports/income", requireBranchAccess, BookingController.getIncomeReport);
 adminAppointmentRouter.get("/", requireBranchAccess, BookingController.getAdminAppointments);
 adminAppointmentRouter.patch("/:id/status", BookingController.updateAdminAppointmentStatus);
+

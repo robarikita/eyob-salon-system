@@ -1,6 +1,19 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { LanguageProvider } from './context/LanguageContext';
+import { AuthProvider } from './context/AuthContext';
+import { ProtectedRoute } from './components/common/ProtectedRoute';
+
 import HomePage from './pages/HomePage';
+
+// Minimalist Auth & Account Pages
+import LoginPage from './pages/auth/LoginPage';
+import RegisterPage from './pages/auth/RegisterPage';
+import StaffLoginPage from './pages/auth/StaffLoginPage';
+import AdminLoginPage from './pages/auth/AdminLoginPage';
+import CustomerProfilePage from './pages/customer/CustomerProfilePage';
+
+// Phase 4: Employee & Operations Management Pages
 import EmployeeDashboard from './pages/admin/employees/EmployeeDashboard';
 import EmployeeRoster from './pages/admin/employees/EmployeeRoster';
 import AddEmployeePage from './pages/admin/employees/AddEmployeePage';
@@ -27,46 +40,172 @@ import AdminAppointmentsPage from './pages/admin/appointments/AdminAppointmentsP
 
 export const App: React.FC = () => {
   return (
-    <Router>
-      <Routes>
-        {/* Public Client Facing Experience */}
-        <Route path="/" element={<HomePage />} />
+    <LanguageProvider>
+      <AuthProvider>
+        <Router>
+          <Routes>
+            {/* Public Client Facing Experience */}
+            <Route path="/" element={<HomePage />} />
 
-        {/* Phase 6: Customer Booking Funnel (Public & Authenticated) */}
-        <Route path="/book" element={<BookAppointmentPage />} />
-        <Route path="/book/datetime" element={<SelectDateTimePage />} />
-        <Route path="/book/review" element={<BookingReviewPage />} />
-        <Route path="/book/confirmation/:reference" element={<BookingConfirmationPage />} />
-        <Route path="/my-bookings" element={<MyBookingsPage />} />
+            {/* Authentication Portals */}
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/staff/login" element={<StaffLoginPage />} />
+            <Route path="/admin/login" element={<AdminLoginPage />} />
 
-        {/* Phase 6: Staff Portal */}
-        <Route path="/staff/dashboard" element={<StaffDashboardPage />} />
-        <Route path="/staff/appointments/:id" element={<StaffAppointmentDetailPage />} />
-        <Route path="/staff/availability" element={<StaffAvailabilityPage />} />
+            {/* Customer Booking Funnel (Public & Authenticated) */}
+            <Route path="/book" element={<BookAppointmentPage />} />
+            <Route path="/book/datetime" element={<SelectDateTimePage />} />
+            <Route path="/book/review" element={<BookingReviewPage />} />
+            <Route path="/book/confirmation/:reference" element={<BookingConfirmationPage />} />
+            <Route path="/my-bookings" element={<MyBookingsPage />} />
 
-        {/* Phase 4: Employee & Operations Management Routes */}
-        <Route path="/admin" element={<Navigate to="/admin/employees/dashboard" replace />} />
-        <Route path="/admin/employees" element={<EmployeeRoster />} />
-        <Route path="/admin/employees/dashboard" element={<EmployeeDashboard />} />
-        <Route path="/admin/employees/add" element={<AddEmployeePage />} />
-        <Route path="/admin/employees/schedule" element={<WeeklyScheduleView />} />
-        <Route path="/admin/employees/:id" element={<EmployeeProfile />} />
-        <Route path="/admin/employees/:id/services" element={<ServiceAssignmentView />} />
-        <Route path="/admin/employees/:id/schedule" element={<WeeklyScheduleView />} />
+            {/* Customer Account & Preferences (Protected) */}
+            <Route
+              path="/account/profile"
+              element={
+                <ProtectedRoute allowedRoles={['CUSTOMER', 'OWNER', 'BRANCH_ADMIN']}>
+                  <CustomerProfilePage />
+                </ProtectedRoute>
+              }
+            />
 
-        {/* Phase 5: Service Rituals & Branch Governance Routes */}
-        <Route path="/admin/services" element={<ServiceCatalogPage />} />
-        <Route path="/admin/services/create" element={<CreateServicePage />} />
-        <Route path="/admin/services/branch-governance" element={<BranchServiceGovernancePage />} />
-        <Route path="/admin/services/:id" element={<ServiceDetailsPage />} />
+            {/* Staff Portal (Protected for Specialist Employees and Admins) */}
+            <Route
+              path="/staff/dashboard"
+              element={
+                <ProtectedRoute allowedRoles={['EMPLOYEE', 'BRANCH_ADMIN', 'OWNER']}>
+                  <StaffDashboardPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/staff/appointments/:id"
+              element={
+                <ProtectedRoute allowedRoles={['EMPLOYEE', 'BRANCH_ADMIN', 'OWNER']}>
+                  <StaffAppointmentDetailPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/staff/availability"
+              element={
+                <ProtectedRoute allowedRoles={['EMPLOYEE', 'BRANCH_ADMIN', 'OWNER']}>
+                  <StaffAvailabilityPage />
+                </ProtectedRoute>
+              }
+            />
 
-        {/* Phase 6: Admin Appointment Master Console */}
-        <Route path="/admin/appointments" element={<AdminAppointmentsPage />} />
+            {/* Admin Portal (Protected for Branch Admin & Owner) */}
+            <Route
+              path="/admin"
+              element={<Navigate to="/admin/appointments" replace />}
+            />
+            <Route
+              path="/admin/appointments"
+              element={
+                <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
+                  <AdminAppointmentsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/employees"
+              element={
+                <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
+                  <EmployeeRoster />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/employees/dashboard"
+              element={
+                <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
+                  <EmployeeDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/employees/add"
+              element={
+                <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
+                  <AddEmployeePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/employees/schedule"
+              element={
+                <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
+                  <WeeklyScheduleView />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/employees/:id"
+              element={
+                <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
+                  <EmployeeProfile />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/employees/:id/services"
+              element={
+                <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
+                  <ServiceAssignmentView />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/employees/:id/schedule"
+              element={
+                <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
+                  <WeeklyScheduleView />
+                </ProtectedRoute>
+              }
+            />
 
-        {/* Wildcard fallback to home at bottom */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Router>
+            {/* Service Catalog & Multi-Branch Governance */}
+            <Route
+              path="/admin/services"
+              element={
+                <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
+                  <ServiceCatalogPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/services/create"
+              element={
+                <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
+                  <CreateServicePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/services/branch-governance"
+              element={
+                <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
+                  <BranchServiceGovernancePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/services/:id"
+              element={
+                <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
+                  <ServiceDetailsPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Wildcard fallback to home */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Router>
+      </AuthProvider>
+    </LanguageProvider>
   );
 };
 

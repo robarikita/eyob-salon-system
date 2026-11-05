@@ -256,3 +256,4 @@ export const BookingReviewPage: React.FC = () => {
 };
 
 export default BookingReviewPage;
+

@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import { LanguageToggle } from '../common/LanguageToggle';
 
 interface NavbarProps {
   onBookClick?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ onBookClick }) => {
+  const { user, isAuthenticated } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -156,6 +160,24 @@ export const Navbar: React.FC<NavbarProps> = ({ onBookClick }) => {
             )}
           </div>
 
+          {/* Language Toggle */}
+          <div className="hidden sm:flex items-center">
+            <LanguageToggle />
+          </div>
+
+          {/* Account / Sign In Link */}
+          <Link
+            to={isAuthenticated ? (user?.role === 'EMPLOYEE' ? '/staff/dashboard' : user?.role === 'OWNER' || user?.role === 'BRANCH_ADMIN' ? '/admin/appointments' : '/account/profile') : '/login'}
+            className="text-stone-300 hover:text-brand-gold text-xs font-medium uppercase tracking-wider flex items-center gap-1.5 px-2 py-1.5 transition-colors"
+          >
+            <span className="material-symbols-outlined text-[18px]">
+              {isAuthenticated ? 'account_circle' : 'login'}
+            </span>
+            <span className="hidden xl:inline">
+              {isAuthenticated ? (user?.firstName || 'Account') : 'Sign In'}
+            </span>
+          </Link>
+
           {/* Desktop CTA Button */}
           <a
             href="#book"
@@ -208,7 +230,20 @@ export const Navbar: React.FC<NavbarProps> = ({ onBookClick }) => {
               </a>
             ))}
           </nav>
-          <div className="pt-3 border-t border-stone-800">
+          <div className="pt-3 border-t border-stone-800 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <LanguageToggle />
+              <Link
+                to={isAuthenticated ? (user?.role === 'EMPLOYEE' ? '/staff/dashboard' : user?.role === 'OWNER' || user?.role === 'BRANCH_ADMIN' ? '/admin/appointments' : '/account/profile') : '/login'}
+                className="text-brand-gold text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <span className="material-symbols-outlined text-[18px]">
+                  {isAuthenticated ? 'account_circle' : 'login'}
+                </span>
+                <span>{isAuthenticated ? (user?.firstName || 'Account') : 'Sign In / ግባ'}</span>
+              </Link>
+            </div>
             <a
               href="#book"
               onClick={handleBookClick}

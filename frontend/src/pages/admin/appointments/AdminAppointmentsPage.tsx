@@ -422,3 +422,4 @@ export const AdminAppointmentsPage: React.FC = () => {
 };
 
 export default AdminAppointmentsPage;
+

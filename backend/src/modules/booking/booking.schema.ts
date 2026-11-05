@@ -56,3 +56,4 @@ export type RescheduleBookingInput = z.infer<typeof rescheduleBookingSchema>;
 export type UpdateAppointmentStatusInput = z.infer<typeof updateAppointmentStatusSchema>;
 export type StaffExceptionInput = z.infer<typeof staffExceptionSchema>;
 export type CreateReviewInput = z.infer<typeof createReviewSchema>;
+

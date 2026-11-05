@@ -176,3 +176,4 @@ export const BookingConfirmationPage: React.FC = () => {
 };
 
 export default BookingConfirmationPage;
+

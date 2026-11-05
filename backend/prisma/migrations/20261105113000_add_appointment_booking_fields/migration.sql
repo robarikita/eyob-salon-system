@@ -10,3 +10,4 @@ ALTER TABLE "BookingItem" ADD COLUMN     "serviceId" TEXT;
 
 -- AddForeignKey
 ALTER TABLE "BookingItem" ADD CONSTRAINT "BookingItem_serviceId_fkey" FOREIGN KEY ("serviceId") REFERENCES "Service"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+

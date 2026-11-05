@@ -9,8 +9,11 @@ export const registerSchema = z.object({
 });
 
 export const loginSchema = z.object({
-  phone: z.string().min(10, "Phone number must be at least 10 characters"),
+  identifier: z.string().optional(),
+  phone: z.string().optional(),
   password: z.string().min(6, "Password must be at least 6 characters"),
+}).refine((data) => !!(data.identifier || data.phone), {
+  message: "Email or phone number is required",
 });
 
 export const refreshSchema = z.object({

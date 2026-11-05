@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { bookingApi, BookingDTO } from '../../api/bookingApi';
+import { LanguageToggle } from '../../components/common/LanguageToggle';
 
 export const MyBookingsPage: React.FC = () => {
   const [bookings, setBookings] = useState<BookingDTO[]>([]);
@@ -98,13 +99,23 @@ export const MyBookingsPage: React.FC = () => {
         <Link to="/" className="text-xl font-serif tracking-widest text-[#D4AF37] font-bold">
           EYOB <span className="text-xs uppercase tracking-normal font-sans text-stone-400 block -mt-1">Sanctuary & Spa</span>
         </Link>
-        <Link
-          to="/book"
-          className="px-4 py-2 rounded bg-[#D4AF37] hover:bg-[#C59A3F] text-[#0E0B09] text-xs font-bold uppercase tracking-wider transition flex items-center gap-1.5"
-        >
-          <span className="material-symbols-outlined text-sm">add_circle</span>
-          Reserve New Ritual
-        </Link>
+        <div className="flex items-center gap-3">
+          <LanguageToggle />
+          <Link
+            to="/account/profile"
+            className="p-2 text-stone-400 hover:text-[#D4AF37] transition-colors"
+            title="Profile & Settings"
+          >
+            <span className="material-symbols-outlined text-xl">account_circle</span>
+          </Link>
+          <Link
+            to="/book"
+            className="px-4 py-2 rounded bg-[#D4AF37] hover:bg-[#C59A3F] text-[#0E0B09] text-xs font-bold uppercase tracking-wider transition flex items-center gap-1.5"
+          >
+            <span className="material-symbols-outlined text-sm">add_circle</span>
+            Reserve New Ritual
+          </Link>
+        </div>
       </header>
 
       {/* Main Container */}
@@ -442,3 +453,4 @@ export const MyBookingsPage: React.FC = () => {
 };
 
 export default MyBookingsPage;
+

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import { LanguageToggle } from '../common/LanguageToggle';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -15,6 +17,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   activePath,
 }) => {
   const location = useLocation();
+  const { user, logout } = useAuth();
   const currentPath = activePath || location.pathname;
   const [currentBranch, setCurrentBranch] = useState(selectedBranch);
   const [isOwnerView, setIsOwnerView] = useState(true);
@@ -284,9 +287,9 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
             </div>
           </div>
 
-          {/* Right Header: Search, Notifications, Avatar */}
+          {/* Right Header: Search, Language, Notifications, Avatar */}
           <div className="flex items-center gap-3 sm:gap-4">
-            <div className="hidden md:flex items-center bg-surface-container-low rounded-xl px-3 py-1.5 w-56 xl:w-72 shadow-inner">
+            <div className="hidden md:flex items-center bg-surface-container-low rounded-xl px-3 py-1.5 w-48 xl:w-64 shadow-inner">
               <span className="material-symbols-outlined text-secondary text-[18px] mr-2">search</span>
               <input
                 type="text"
@@ -294,6 +297,8 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                 className="w-full bg-transparent text-xs text-on-surface placeholder:text-secondary focus:outline-none"
               />
             </div>
+
+            <LanguageToggle />
 
             <button
               type="button"
@@ -303,15 +308,31 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
               <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-primary-container shadow-[0_0_8px_rgba(197,155,39,0.8)]" />
             </button>
 
-            <div className="flex items-center gap-2.5 pl-1 sm:pl-2">
+            <Link
+              to="/account/profile"
+              className="flex items-center gap-2.5 pl-1 sm:pl-2 group hover:opacity-90 transition-opacity"
+            >
               <div className="hidden sm:flex flex-col text-right">
-                <span className="text-xs font-bold text-on-surface">Eyob Hailu</span>
-                <span className="text-[11px] text-secondary">Proprietor</span>
+                <span className="text-xs font-bold text-on-surface">
+                  {user ? `${user.firstName} ${user.lastName}` : 'Eyob Hailu'}
+                </span>
+                <span className="text-[11px] text-secondary">
+                  {user?.role === 'OWNER' ? 'Proprietor' : user?.role || 'Admin'}
+                </span>
               </div>
               <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-white shadow-sm font-serif font-bold text-sm">
-                EH
+                {user ? `${user.firstName[0]}${user.lastName[0]}` : 'EH'}
               </div>
-            </div>
+            </Link>
+
+            <button
+              type="button"
+              onClick={logout}
+              title="Sign Out / ውጣ"
+              className="p-2 rounded-xl bg-surface-container-low hover:bg-surface-container text-outline hover:text-error transition-colors"
+            >
+              <span className="material-symbols-outlined text-[19px]">logout</span>
+            </button>
           </div>
         </header>
 

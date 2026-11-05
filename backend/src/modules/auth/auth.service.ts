@@ -47,18 +47,24 @@ export class AuthService {
   }
 
   static async login(data: LoginInput) {
-    const user = await prisma.user.findUnique({
-      where: { phone: data.phone },
+    const lookup = data.identifier || data.phone || "";
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { phone: lookup },
+          { email: lookup },
+        ],
+      },
     });
 
     if (!user) {
-      throw new UnauthorizedError("Invalid phone number or password");
+      throw new UnauthorizedError("Invalid credentials");
     }
 
     const isValid = await comparePassword(data.password, user.password);
 
     if (!isValid) {
-      throw new UnauthorizedError("Invalid phone number or password");
+      throw new UnauthorizedError("Invalid credentials");
     }
 
     const payload: TokenPayload = {
