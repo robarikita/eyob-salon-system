@@ -21,7 +21,6 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   const { user, logout } = useAuth();
   const currentPath = activePath || location.pathname;
   const [currentBranch, setCurrentBranch] = useState(selectedBranch);
-  const [isOwnerView, setIsOwnerView] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const handleBranchSelect = (val: string) => {
@@ -32,6 +31,8 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   const navItems = [
     { label: 'Overview', path: '/admin/employees/dashboard', icon: 'dashboard' },
     { label: 'Appointments', path: '/admin/appointments', icon: 'calendar_month' },
+    { label: 'Roles & Permissions', path: '/admin/roles', icon: 'shield_person' },
+    ...(user?.role === 'OWNER' ? [{ label: 'Audit Logs', path: '/admin/audit-logs', icon: 'policy' }] : []),
   ];
 
   const serviceSubNav = [
@@ -269,35 +270,30 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
               <span className="material-symbols-outlined text-[20px]">menu</span>
             </button>
 
-            {/* Branch Selector Dropdown */}
-            <div className="relative flex items-center bg-surface-container-low rounded-xl px-3 py-1.5 shadow-sm">
-              <span className="material-symbols-outlined text-primary text-[18px] mr-2">share_location</span>
-              <select
-                value={currentBranch}
-                onChange={(e) => handleBranchSelect(e.target.value)}
-                className="bg-transparent text-xs sm:text-sm text-on-surface font-medium focus:outline-none pr-7 cursor-pointer"
-              >
-                <option value="all">All Branches (3)</option>
-                <option value="bole-bulbula">Bole Bulbula</option>
-                <option value="kazanchis">Kazanchis</option>
-                <option value="cmc">CMC Branch</option>
-              </select>
-              <span className="material-symbols-outlined text-secondary text-[16px] absolute right-2 pointer-events-none">
-                unfold_more
-              </span>
-            </div>
-
-            {/* View Mode Pill */}
-            <div className="hidden sm:flex items-center">
-              <button
-                type="button"
-                onClick={() => setIsOwnerView(!isOwnerView)}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-secondary-container text-on-secondary-container text-xs font-semibold uppercase tracking-wider hover:bg-surface-container-high transition-colors"
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-primary-container animate-pulse" />
-                {isOwnerView ? 'Owner View' : 'Branch Admin'}
-              </button>
-            </div>
+            {/* Branch Selector (Locked Badge for Branch Admin; Switcher for Owner) */}
+            {user?.role === 'BRANCH_ADMIN' ? (
+              <div className="flex items-center gap-2 bg-surface-container-low border border-primary/20 rounded-xl px-3.5 py-1.5 shadow-sm text-xs font-semibold text-primary">
+                <span className="material-symbols-outlined text-[17px]">location_on</span>
+                <span>Bole Bulbula</span>
+              </div>
+            ) : (
+              <div className="relative flex items-center bg-surface-container-low rounded-xl px-3 py-1.5 shadow-sm">
+                <span className="material-symbols-outlined text-primary text-[18px] mr-2">share_location</span>
+                <select
+                  value={currentBranch}
+                  onChange={(e) => handleBranchSelect(e.target.value)}
+                  className="bg-transparent text-xs sm:text-sm text-on-surface font-medium focus:outline-none pr-7 cursor-pointer"
+                >
+                  <option value="all">All Branches (3)</option>
+                  <option value="bole-bulbula">Bole Bulbula</option>
+                  <option value="kazanchis">Kazanchis</option>
+                  <option value="cmc">CMC Branch</option>
+                </select>
+                <span className="material-symbols-outlined text-secondary text-[16px] absolute right-2 pointer-events-none">
+                  unfold_more
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Right Header: Search, Language, Notifications, Avatar */}

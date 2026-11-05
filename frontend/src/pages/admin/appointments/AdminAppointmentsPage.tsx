@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '../../../components/admin/AdminLayout';
 import { bookingApi, BookingDTO } from '../../../api/bookingApi';
+import { useAuth } from '../../../context/AuthContext';
 
 export const AdminAppointmentsPage: React.FC = () => {
-  const [selectedBranch, setSelectedBranch] = useState('all');
+  const { user } = useAuth();
+  const [selectedBranch, setSelectedBranch] = useState(
+    user?.role === 'BRANCH_ADMIN' && user.branchId ? user.branchId : 'all'
+  );
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -18,6 +22,7 @@ export const AdminAppointmentsPage: React.FC = () => {
   });
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [showInspector, setShowInspector] = useState(true);
 
   // Inspector dock selected appointment
   const [inspectTarget, setInspectTarget] = useState<BookingDTO | null>(null);
@@ -25,8 +30,12 @@ export const AdminAppointmentsPage: React.FC = () => {
   const fetchAppointments = async () => {
     try {
       setLoading(true);
+      const branchToQuery = user?.role === 'BRANCH_ADMIN' && user.branchId
+        ? user.branchId
+        : selectedBranch !== 'all' ? selectedBranch : undefined;
+
       const res = await bookingApi.getAdminAppointments({
-        branchId: selectedBranch !== 'all' ? selectedBranch : undefined,
+        branchId: branchToQuery,
         date: selectedDate || undefined,
         status: statusFilter !== 'ALL' ? statusFilter : undefined,
         search: searchQuery || undefined,
@@ -54,7 +63,7 @@ export const AdminAppointmentsPage: React.FC = () => {
   const handleLiveSync = async () => {
     setSyncing(true);
     await fetchAppointments();
-    setTimeout(() => setSyncing(false), 700);
+    setTimeout(() => setSyncing(false), 500);
   };
 
   const handleUpdateStatus = async (id: string, status: string) => {
@@ -73,84 +82,80 @@ export const AdminAppointmentsPage: React.FC = () => {
       activePath="/admin/appointments"
     >
       <div className="space-y-6">
-        {/* Top Header Console Bar */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-[#E5E2DD]">
+        {/* Top Header Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#E5E2DD]">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-[10px] uppercase tracking-widest text-[#775A00] font-bold">
-                Executive Master Schedule
-              </span>
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#181412] text-[#D4AF37] border border-[#D4AF37]/40">
-                Multi-Branch Real-Time
-              </span>
-            </div>
-            <h1 className="text-2xl lg:text-3xl font-serif font-bold text-[#1C1C19]">
-              Sanctuary Appointments & Reservations Console
+            <span className="text-[10px] uppercase tracking-widest text-[#775A00] font-bold block mb-0.5">
+              {user?.role === 'BRANCH_ADMIN' ? 'Branch Appointments' : 'Global Operations'}
+            </span>
+            <h1 className="text-2xl font-serif font-bold text-[#1C1C19]">
+              Appointments
             </h1>
-            <p className="text-xs text-stone-500">
-              Master schedule, multi-branch appointment records, deposit settlements, and suite allocations.
-            </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button
               onClick={handleLiveSync}
-              className="px-3.5 py-2 rounded bg-white hover:bg-stone-50 text-stone-700 border border-[#E5E2DD] text-xs font-bold transition flex items-center gap-2 shadow-sm"
+              className="px-3 py-1.5 rounded-lg bg-white hover:bg-stone-50 text-stone-700 border border-[#E5E2DD] text-xs font-semibold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
             >
               <span className={`material-symbols-outlined text-sm text-[#775A00] ${syncing ? 'animate-spin' : ''}`}>
                 sync
               </span>
-              Live Sync
+              Refresh
             </button>
             <button
-              onClick={() => window.print()}
-              className="px-3.5 py-2 rounded bg-white hover:bg-stone-50 text-stone-700 border border-[#E5E2DD] text-xs font-bold transition flex items-center gap-2 shadow-sm"
+              onClick={() => setShowInspector(!showInspector)}
+              className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition flex items-center gap-1.5 shadow-sm cursor-pointer ${
+                showInspector
+                  ? 'bg-[#181412] text-[#D4AF37] border-[#D4AF37]/50'
+                  : 'bg-white text-stone-700 border-[#E5E2DD] hover:bg-stone-50'
+              }`}
             >
-              <span className="material-symbols-outlined text-sm">print</span>
-              Print List
+              <span className="material-symbols-outlined text-sm">dock_to_left</span>
+              Inspector
             </button>
           </div>
         </div>
 
         {/* Metrics Overview Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <div className="bg-white rounded-lg p-3.5 border border-[#E5E2DD] shadow-sm">
-            <span className="text-[10px] uppercase tracking-wider text-stone-500 font-bold block">Total Scheduled</span>
-            <span className="text-2xl font-serif font-bold text-[#1C1C19]">{counts.total}</span>
+          <div className="bg-white rounded-lg p-3 border border-[#E5E2DD] shadow-sm">
+            <span className="text-[10px] uppercase tracking-wider text-stone-500 font-bold block">Total</span>
+            <span className="text-xl font-serif font-bold text-[#1C1C19]">{counts.total}</span>
           </div>
-          <div className="bg-white rounded-lg p-3.5 border border-[#E5E2DD] shadow-sm">
+          <div className="bg-white rounded-lg p-3 border border-[#E5E2DD] shadow-sm">
             <span className="text-[10px] uppercase tracking-wider text-emerald-700 font-bold block">Confirmed</span>
-            <span className="text-2xl font-serif font-bold text-emerald-800">{counts.confirmed}</span>
+            <span className="text-xl font-serif font-bold text-emerald-800">{counts.confirmed}</span>
           </div>
-          <div className="bg-white rounded-lg p-3.5 border border-[#E5E2DD] shadow-sm">
+          <div className="bg-white rounded-lg p-3 border border-[#E5E2DD] shadow-sm">
             <span className="text-[10px] uppercase tracking-wider text-amber-700 font-bold block">In Progress</span>
-            <span className="text-2xl font-serif font-bold text-amber-800">{counts.inProgress}</span>
+            <span className="text-xl font-serif font-bold text-amber-800">{counts.inProgress}</span>
           </div>
-          <div className="bg-white rounded-lg p-3.5 border border-[#E5E2DD] shadow-sm">
+          <div className="bg-white rounded-lg p-3 border border-[#E5E2DD] shadow-sm">
             <span className="text-[10px] uppercase tracking-wider text-blue-700 font-bold block">Completed</span>
-            <span className="text-2xl font-serif font-bold text-blue-800">{counts.completed}</span>
+            <span className="text-xl font-serif font-bold text-blue-800">{counts.completed}</span>
           </div>
-          <div className="bg-white rounded-lg p-3.5 border border-[#E5E2DD] shadow-sm">
+          <div className="bg-white rounded-lg p-3 border border-[#E5E2DD] shadow-sm">
             <span className="text-[10px] uppercase tracking-wider text-red-700 font-bold block">Rejected</span>
-            <span className="text-2xl font-serif font-bold text-red-800">{counts.rejected}</span>
+            <span className="text-xl font-serif font-bold text-red-800">{counts.rejected}</span>
           </div>
-          <div className="bg-white rounded-lg p-3.5 border border-[#E5E2DD] shadow-sm">
+          <div className="bg-white rounded-lg p-3 border border-[#E5E2DD] shadow-sm">
             <span className="text-[10px] uppercase tracking-wider text-stone-500 font-bold block">Cancelled</span>
-            <span className="text-2xl font-serif font-bold text-stone-700">{counts.cancelled}</span>
+            <span className="text-xl font-serif font-bold text-stone-700">{counts.cancelled}</span>
           </div>
         </div>
 
         {/* Filters Toolbar */}
-        <div className="bg-white rounded-xl p-4 border border-[#E5E2DD] shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+        <div className="bg-white rounded-xl p-3 border border-[#E5E2DD] shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
           {/* Status Pills */}
           <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-1 md:pb-0">
             {['ALL', 'CONFIRMED', 'IN_PROGRESS', 'COMPLETED', 'REJECTED', 'CANCELLED'].map((st) => (
               <button
                 key={st}
                 onClick={() => setStatusFilter(st)}
-                className={`px-3 py-1 rounded text-xs font-bold transition whitespace-nowrap ${
+                className={`px-3 py-1 rounded text-xs font-bold transition whitespace-nowrap cursor-pointer ${
                   statusFilter === st
-                    ? 'bg-[#31302D] text-[#D4AF37] shadow-sm'
+                    ? 'bg-[#181412] text-[#D4AF37] shadow-sm'
                     : 'bg-[#F0EDE9] text-stone-600 hover:bg-[#E5E2DD]'
                 }`}
               >
@@ -165,26 +170,26 @@ export const AdminAppointmentsPage: React.FC = () => {
               <span className="material-symbols-outlined text-xs absolute left-2.5 top-2.5 text-stone-400">search</span>
               <input
                 type="text"
-                placeholder="Search ref or customer..."
+                placeholder="Search ref or patron..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && fetchAppointments()}
-                className="text-xs pl-8 pr-3 py-1.5 rounded border border-[#E5E2DD] outline-none w-44"
+                className="text-xs pl-8 pr-3 py-1.5 rounded-lg border border-[#E5E2DD] outline-none w-44"
               />
             </div>
             <input
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="text-xs p-1.5 rounded border border-[#E5E2DD] outline-none"
+              className="text-xs p-1.5 rounded-lg border border-[#E5E2DD] outline-none"
             />
           </div>
         </div>
 
-        {/* Master Schedule Grid + Inspector Dock Layout */}
+        {/* Master Schedule Grid + Optional Inspector Dock */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Table (8 cols) */}
-          <div className="lg:col-span-8 bg-white rounded-xl border border-[#E5E2DD] shadow-sm overflow-hidden">
+          {/* Table */}
+          <div className={`${showInspector ? 'lg:col-span-8' : 'lg:col-span-12'} bg-white rounded-xl border border-[#E5E2DD] shadow-sm overflow-hidden`}>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
@@ -297,7 +302,8 @@ export const AdminAppointmentsPage: React.FC = () => {
           </div>
 
           {/* Live Record Inspector Dock (4 cols) */}
-          <div className="lg:col-span-4">
+          {showInspector && (
+            <div className="lg:col-span-4">
             {inspectTarget ? (
               <div className="bg-[#181412] text-[#FAF7F2] rounded-xl p-6 border border-[#2C2724] shadow-xl sticky top-24 space-y-6">
                 <div className="flex items-center justify-between pb-3 border-b border-[#2C2724]">
@@ -415,6 +421,7 @@ export const AdminAppointmentsPage: React.FC = () => {
               </div>
             )}
           </div>
+        )}
         </div>
       </div>
     </AdminLayout>

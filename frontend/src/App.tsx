@@ -40,6 +40,10 @@ import StaffAppointmentDetailPage from './pages/staff/StaffAppointmentDetailPage
 import StaffAvailabilityPage from './pages/staff/StaffAvailabilityPage';
 import AdminAppointmentsPage from './pages/admin/appointments/AdminAppointmentsPage';
 
+// RBAC & System Audit Pages
+import RolesManagementPage from './pages/admin/roles/RolesManagementPage';
+import AuditLogsPage from './pages/admin/audit/AuditLogsPage';
+
 export const App: React.FC = () => {
   return (
     <LanguageProvider>
@@ -200,6 +204,25 @@ export const App: React.FC = () => {
               element={
                 <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
                   <ServiceDetailsPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Roles & Permissions Governance */}
+            <Route
+              path="/admin/roles"
+              element={
+                <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
+                  <RolesManagementPage />
+                </ProtectedRoute>
+              }
+            />
+            {/* System Audit Logs (OWNER Only) */}
+            <Route
+              path="/admin/audit-logs"
+              element={
+                <ProtectedRoute allowedRoles={['OWNER']}>
+                  <AuditLogsPage />
                 </ProtectedRoute>
               }
             />

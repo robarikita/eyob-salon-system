@@ -15,6 +15,7 @@ import {
   staffAppointmentRouter,
   adminAppointmentRouter,
 } from "./modules/booking/booking.routes";
+import adminRoutes from "./modules/admin/admin.routes";
 
 const app = express();
 
@@ -44,6 +45,7 @@ app.use("/api/v1/services", serviceRoutes);
 app.use("/api/v1/bookings", customerBookingRouter);
 app.use("/api/v1/staff", staffAppointmentRouter);
 app.use("/api/v1/admin/appointments", adminAppointmentRouter);
+app.use("/api/v1/admin", adminRoutes);
 
 // Error Handler
 app.use(errorHandler);

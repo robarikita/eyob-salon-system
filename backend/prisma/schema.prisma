@@ -70,6 +70,8 @@ model User {
   phone                String    @unique
   password             String
   role                 UserRole  @default(CUSTOMER)
+  roleId               String?
+  customRole           Role?     @relation(fields: [roleId], references: [id])
   passwordResetToken   String?   @unique
   passwordResetExpires DateTime?
   tokenVersion         Int       @default(0)
@@ -97,6 +99,7 @@ model Branch {
   
   // Relations
   users            User[]
+  roles            Role[]
   branchHours      BranchHours[]
   employees        Employee[]
   services         Service[]
@@ -105,6 +108,41 @@ model Branch {
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+}
+
+model Role {
+  id           String           @id @default(uuid())
+  name         String           @unique
+  description  String?
+  isSystemRole Boolean          @default(false)
+  branchId     String?
+  branch       Branch?          @relation(fields: [branchId], references: [id])
+  permissions  RolePermission[]
+  users        User[]
+
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  description String?
+  roles       RolePermission[]
+
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  createdAt    DateTime   @default(now())
+
+  @@id([roleId, permissionId])
 }
 
 model BranchHours {

@@ -77,3 +77,82 @@ export const requireBranchAccess = (req: Request, res: Response, next: NextFunct
 
   next();
 };
+
+export const requirePermission = (...permissionNames: string[]) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return next(new UnauthorizedError("Not authenticated"));
+    }
+
+    // Owner has global bypass authority
+    if (req.user.role === "OWNER") {
+      return next();
+    }
+
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: {
+          role: true,
+          roleId: true,
+          customRole: {
+            include: {
+              permissions: {
+                include: {
+                  permission: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!user) {
+        return res.status(403).json({
+          status: "error",
+          message: "Access denied: missing required permission",
+        });
+      }
+
+      let userPermissions: string[] = [];
+
+      if (user.customRole) {
+        userPermissions = user.customRole.permissions.map((rp) => rp.permission.name);
+      } else {
+        const systemRole = await prisma.role.findUnique({
+          where: { name: user.role },
+          include: {
+            permissions: {
+              include: {
+                permission: true,
+              },
+            },
+          },
+        });
+        if (systemRole) {
+          userPermissions = systemRole.permissions.map((rp) => rp.permission.name);
+        }
+      }
+
+      const hasRequiredPermissions = permissionNames.every((perm) =>
+        userPermissions.includes(perm)
+      );
+
+      if (!hasRequiredPermissions) {
+        return res.status(403).json({
+          status: "error",
+          message: "Access denied: missing required permission",
+        });
+      }
+
+      next();
+    } catch (err) {
+      logger.error({ err }, "Permission verification failed");
+      return res.status(403).json({
+        status: "error",
+        message: "Access denied: missing required permission",
+      });
+    }
+  };
+};
+

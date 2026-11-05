@@ -13,6 +13,7 @@ export const loginRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   statusCode: 429,
+  validate: false,
   keyGenerator: (req: Request) => {
     return (req.headers["x-test-ip"] as string) || (req.headers["x-forwarded-for"] as string) || req.ip || "127.0.0.1";
   },
@@ -35,6 +36,7 @@ export const generalAuthRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   statusCode: 429,
+  validate: false,
   keyGenerator: (req: Request) => {
     return (req.headers["x-test-ip"] as string) || (req.headers["x-forwarded-for"] as string) || req.ip || "127.0.0.1";
   },
