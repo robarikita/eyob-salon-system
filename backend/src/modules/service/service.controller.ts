@@ -146,4 +146,17 @@ export class ServiceController {
       next(error);
     }
   }
+
+  static async getCategories(req: Request, res: Response, next: NextFunction) {
+    try {
+      const branchId = typeof req.query.branchId === "string" ? req.query.branchId : undefined;
+      const categories = await ServiceRitualService.getCategories(branchId);
+      res.status(200).json({
+        success: true,
+        data: categories,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

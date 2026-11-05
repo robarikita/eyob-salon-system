@@ -635,11 +635,16 @@ export class EmployeeService {
       },
     });
 
-    // Commission pool calculation (simulated from bookings or base setting)
-    const commissionStats = await prisma.employee.aggregate({
+    // Commission pool calculation derived strictly from database compensation settings
+    const activeStaffForCommission = await prisma.employee.findMany({
       where: { ...branchFilter, status: true },
-      _sum: { baseSalary: true },
+      select: { baseSalary: true, commissionRate: true },
     });
+    const calculatedCommissionPool = activeStaffForCommission.reduce((acc, staff) => {
+      const salary = staff.baseSalary ? Number(staff.baseSalary) : 0;
+      const rate = staff.commissionRate ? Number(staff.commissionRate) / 100 : 0;
+      return acc + (salary * rate);
+    }, 0);
 
     // Branch breakdown
     const branches = await prisma.branch.findMany({
@@ -682,7 +687,7 @@ export class EmployeeService {
       totalEmployees,
       onDutyToday: onDutyCount,
       utilizationRate: totalActive > 0 ? Math.round((onDutyCount / totalActive) * 100) : 0,
-      totalCommissionPool: (commissionStats._sum.baseSalary ? Number(commissionStats._sum.baseSalary) * 0.15 : 184500),
+      totalCommissionPool: Math.round(calculatedCommissionPool),
       branchBreakdown,
     };
   }

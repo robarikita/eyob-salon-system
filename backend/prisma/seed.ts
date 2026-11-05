@@ -463,6 +463,12 @@ async function main() {
     }
   }
 
+  // Ensure all legacy services have standardCommission backfilled
+  await prisma.service.updateMany({
+    where: { standardCommission: null },
+    data: { standardCommission: 15.00 },
+  });
+
   console.log("Database seeded successfully with Phase 5 rituals & governance.");
 }
 

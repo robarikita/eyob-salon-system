@@ -40,3 +40,4 @@ export const updateBranchServiceRuleSchema = z.object({
 export type CreateServiceInput = z.infer<typeof createServiceSchema>;
 export type UpdateServiceInput = z.infer<typeof updateServiceSchema>;
 export type UpdateBranchServiceRuleInput = z.infer<typeof updateBranchServiceRuleSchema>;
+

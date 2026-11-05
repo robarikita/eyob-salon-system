@@ -565,6 +565,26 @@ export const serviceApi = {
   },
 
   /**
+   * Get dynamic distinct category aggregations with service counts
+   */
+  async getCategories(branchId?: string): Promise<Array<{ name: string; count: number }>> {
+    try {
+      const url = branchId ? `${API_BASE}/services/categories?branchId=${branchId}` : `${API_BASE}/services/categories`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+      const json = await res.json();
+      return json.data || json;
+    } catch {
+      // Local aggregation fallback
+      const catMap = new Map<string, number>();
+      for (const s of MOCK_SERVICES) {
+        catMap.set(s.category, (catMap.get(s.category) || 0) + 1);
+      }
+      return Array.from(catMap.entries()).map(([name, count]) => ({ name, count }));
+    }
+  },
+
+  /**
    * Retrieve single ritual specification dossier by ID or Code
    */
   async getServiceById(idOrCode: string, branchId?: string): Promise<ServiceRitual> {
@@ -814,3 +834,4 @@ export const serviceApi = {
     }
   },
 };
+

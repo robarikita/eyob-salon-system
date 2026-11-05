@@ -138,7 +138,8 @@ export const BranchServiceGovernancePage: React.FC = () => {
 
   // Calculate live yield for drawer
   const editPrice = drawerForm.customPrice || 0;
-  const specialistCut = Math.round(editPrice * 0.15); // Standard 15% branch baseline
+  const commPercent = Number(editingRitual?.standardCommission ?? 18);
+  const specialistCut = Math.round(editPrice * (commPercent / 100));
   const netYield = editPrice - specialistCut;
 
   return (
@@ -614,7 +615,7 @@ export const BranchServiceGovernancePage: React.FC = () => {
                       Live Financial Yield Calculator
                     </span>
                     <div className="flex justify-between items-center py-1">
-                      <span className="text-secondary">Specialist Commission (15%):</span>
+                      <span className="text-secondary">Specialist Commission ({commPercent}%):</span>
                       <span className="font-semibold text-primary">{specialistCut.toLocaleString()} ETB</span>
                     </div>
                     <div className="flex justify-between items-center py-1 border-t border-surface-container-high/60 mt-1">

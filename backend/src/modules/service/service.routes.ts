@@ -10,7 +10,8 @@ router.use(authenticate);
 // 1. Branch Governance metrics (Placed before /:id)
 router.get("/governance/:branchId", authorize("OWNER", "BRANCH_ADMIN"), ServiceController.getBranchGovernance);
 
-// 2. Master Catalog Listing & Single Ritual Spec
+// 2. Master Catalog Listing & Dynamic Categories (Categories before /:id)
+router.get("/categories", ServiceController.getCategories);
 router.get("/", ServiceController.listServices);
 router.get("/:id", ServiceController.getServiceById);
 
@@ -23,3 +24,4 @@ router.patch("/:id/toggle-status", authorize("OWNER"), ServiceController.toggleS
 router.put("/:id/branches/:branchId", authorize("OWNER", "BRANCH_ADMIN"), ServiceController.updateBranchRules);
 
 export default router;
+

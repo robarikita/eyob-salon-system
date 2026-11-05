@@ -97,7 +97,9 @@ export class ServiceRitualService {
     return services.map((s) => {
       // Find matching branch rule if branch context exists
       const branchRule = targetBranchId
-        ? s.branchServices.find((bs) => bs.branchId === targetBranchId)
+        ? s.branchServices.find(
+            (bs) => bs.branchId === targetBranchId || bs.branch?.slug === targetBranchId
+          )
         : null;
 
       const effectivePrice =
@@ -222,7 +224,9 @@ export class ServiceRitualService {
     }
 
     const branchRule = targetBranchId
-      ? service.branchServices.find((bs) => bs.branchId === targetBranchId)
+      ? service.branchServices.find(
+          (bs) => bs.branchId === targetBranchId || bs.branch?.slug === targetBranchId
+        )
       : null;
 
     const effectivePrice =
@@ -584,6 +588,7 @@ export class ServiceRitualService {
         category: bs.service.category,
         subCategory: bs.service.subCategory,
         baseDurationMinutes: bs.service.durationMinutes,
+        effectiveDurationMinutes: bs.customDurationMinutes !== null ? bs.customDurationMinutes : bs.service.durationMinutes,
         localTurnaround: bs.customTurnaround !== null ? bs.customTurnaround : bs.service.turnaroundBuffer,
         configuredPrice: bs.customPrice !== null ? Number(bs.customPrice) : Number(bs.service.basePrice),
         basePrice: Number(bs.service.basePrice),
@@ -593,4 +598,32 @@ export class ServiceRitualService {
       })),
     };
   }
+
+  /**
+   * Get dynamic distinct category aggregations with service counts (Area 5)
+   */
+  static async getCategories(branchIdOrSlug?: string) {
+    const where: any = {};
+    if (branchIdOrSlug && branchIdOrSlug !== "all") {
+      where.branchServices = {
+        some: {
+          OR: [{ branchId: branchIdOrSlug }, { branch: { slug: branchIdOrSlug } }],
+          isActive: true,
+        },
+      };
+    }
+
+    const categoriesRaw = await prisma.service.groupBy({
+      by: ["category"],
+      where,
+      _count: { _all: true },
+      orderBy: { category: "asc" },
+    });
+
+    return categoriesRaw.map((c) => ({
+      name: c.category,
+      count: c._count._all,
+    }));
+  }
 }
+
