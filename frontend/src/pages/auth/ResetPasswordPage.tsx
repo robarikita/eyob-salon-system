@@ -206,3 +206,4 @@ export const ResetPasswordPage: React.FC = () => {
 };
 
 export default ResetPasswordPage;
+
