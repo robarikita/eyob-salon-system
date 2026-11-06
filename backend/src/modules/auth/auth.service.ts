@@ -46,8 +46,45 @@ export class AuthService {
     
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _p, ...userWithoutPassword } = user;
+    const permissions = await AuthService.getUserPermissions(user);
 
-    return { user: userWithoutPassword, tokens };
+    return { user: { ...userWithoutPassword, permissions }, tokens };
+  }
+
+  static async getUserPermissions(user: { id: string; role: string; roleId?: string | null }): Promise<string[]> {
+    if (user.role === "OWNER") {
+      const all = await prisma.permission.findMany({ select: { name: true } });
+      return all.map((p) => p.name);
+    }
+
+    if (user.roleId) {
+      const customRole = await prisma.role.findUnique({
+        where: { id: user.roleId },
+        include: {
+          permissions: {
+            include: { permission: true },
+          },
+        },
+      });
+      if (customRole && customRole.permissions.length > 0) {
+        return customRole.permissions.map((rp) => rp.permission.name);
+      }
+    }
+
+    const systemRole = await prisma.role.findUnique({
+      where: { name: user.role },
+      include: {
+        permissions: {
+          include: { permission: true },
+        },
+      },
+    });
+
+    if (systemRole) {
+      return systemRole.permissions.map((rp) => rp.permission.name);
+    }
+
+    return [];
   }
 
   static async login(data: LoginInput) {
@@ -83,8 +120,9 @@ export class AuthService {
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _p, ...userWithoutPassword } = user;
+    const permissions = await AuthService.getUserPermissions(user);
 
-    return { user: userWithoutPassword, tokens };
+    return { user: { ...userWithoutPassword, permissions }, tokens };
   }
 
   static async refresh(refreshToken: string) {
@@ -200,6 +238,7 @@ export class AuthService {
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _p, ...userWithoutPassword } = user;
-    return userWithoutPassword;
+    const permissions = await AuthService.getUserPermissions(user);
+    return { ...userWithoutPassword, permissions };
   }
 }

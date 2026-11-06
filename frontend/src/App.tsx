@@ -151,6 +151,14 @@ export const App: React.FC = () => {
               }
             />
             <Route
+              path="/admin/employees/schedules"
+              element={
+                <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
+                  <WeeklyScheduleView />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/admin/employees/:id"
               element={
                 <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
@@ -193,6 +201,14 @@ export const App: React.FC = () => {
               }
             />
             <Route
+              path="/admin/services/pricing"
+              element={
+                <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
+                  <BranchServiceGovernancePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/admin/services/branch-governance"
               element={
                 <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
@@ -209,29 +225,38 @@ export const App: React.FC = () => {
               }
             />
 
-            {/* Roles & Permissions Governance (OWNER Only) */}
+            {/* Roles & Permissions Governance (OWNER or manage_roles) */}
             <Route
               path="/admin/roles"
               element={
-                <ProtectedRoute allowedRoles={['OWNER']}>
+                <ProtectedRoute
+                  allowedRoles={['BRANCH_ADMIN', 'OWNER']}
+                  requiredPermission="manage_roles"
+                >
                   <RolesManagementPage />
                 </ProtectedRoute>
               }
             />
-            {/* Branch Management & Operating Hours (OWNER Only) */}
+            {/* Branch Management & Operating Hours (OWNER or manage_branches) */}
             <Route
               path="/admin/branches"
               element={
-                <ProtectedRoute allowedRoles={['OWNER']}>
+                <ProtectedRoute
+                  allowedRoles={['BRANCH_ADMIN', 'OWNER']}
+                  requiredPermission="manage_branches"
+                >
                   <BranchManagementPage />
                 </ProtectedRoute>
               }
             />
-            {/* System Audit Logs (OWNER Only) */}
+            {/* System Audit Logs (OWNER or view_audit_logs) */}
             <Route
               path="/admin/audit-logs"
               element={
-                <ProtectedRoute allowedRoles={['OWNER']}>
+                <ProtectedRoute
+                  allowedRoles={['BRANCH_ADMIN', 'OWNER']}
+                  requiredPermission="view_audit_logs"
+                >
                   <AuditLogsPage />
                 </ProtectedRoute>
               }

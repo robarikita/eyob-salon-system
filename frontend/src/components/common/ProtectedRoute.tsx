@@ -5,15 +5,19 @@ import { useAuth } from '../../context/AuthContext';
 interface ProtectedRouteProps {
   children: React.ReactNode;
   allowedRoles?: Array<'CUSTOMER' | 'EMPLOYEE' | 'BRANCH_ADMIN' | 'OWNER'>;
+  requiredPermission?: string;
+  requiredPermissions?: string[];
   redirectUnauthenticatedTo?: string;
 }
 
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children,
   allowedRoles,
+  requiredPermission,
+  requiredPermissions,
   redirectUnauthenticatedTo,
 }) => {
-  const { user, isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading, hasPermission } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -41,7 +45,14 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     return <Navigate to={fallback} state={{ from: location }} replace />;
   }
 
-  if (allowedRoles && !allowedRoles.includes(user.role)) {
+  // Permission and role authorization logic
+  const hasRoleAccess = !allowedRoles || allowedRoles.includes(user.role);
+  const hasPermAccess = !requiredPermission || hasPermission(requiredPermission);
+  const hasPermsAccess = !requiredPermissions || requiredPermissions.some((p) => hasPermission(p));
+
+  const isAuthorized = user.role === 'OWNER' || (hasRoleAccess && hasPermAccess && hasPermsAccess);
+
+  if (!isAuthorized) {
     // Redirect to the appropriate portal for the user's role
     if (user.role === 'EMPLOYEE') {
       return <Navigate to="/staff/dashboard" replace />;

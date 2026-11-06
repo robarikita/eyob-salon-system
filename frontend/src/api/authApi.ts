@@ -9,6 +9,7 @@ export interface AuthUserData {
   role: 'CUSTOMER' | 'EMPLOYEE' | 'BRANCH_ADMIN' | 'OWNER';
   branchId?: string | null;
   workstation?: string | null;
+  permissions?: string[];
 }
 
 export interface LoginPayload {

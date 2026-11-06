@@ -18,11 +18,23 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
 }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, logout, hasPermission } = useAuth();
   const currentPath = activePath || location.pathname;
   const [currentBranch, setCurrentBranch] = useState(selectedBranch);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [assignedBranchName, setAssignedBranchName] = useState<string>('');
+
+  const isServicesSectionActive = currentPath.startsWith('/admin/services');
+  const isEmployeeSectionActive =
+    currentPath.startsWith('/admin/employees') && currentPath !== '/admin/employees/dashboard';
+
+  const [servicesOpen, setServicesOpen] = useState(isServicesSectionActive);
+  const [employeesOpen, setEmployeesOpen] = useState(isEmployeeSectionActive);
+
+  useEffect(() => {
+    if (isServicesSectionActive) setServicesOpen(true);
+    if (isEmployeeSectionActive) setEmployeesOpen(true);
+  }, [currentPath, isServicesSectionActive, isEmployeeSectionActive]);
 
   useEffect(() => {
     if (user?.role === 'BRANCH_ADMIN' && user.branchId) {
@@ -43,36 +55,38 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   };
 
   const navItems = [
-    { label: 'Overview', path: '/admin/employees/dashboard', icon: 'dashboard' },
-    { label: 'Appointments', path: '/admin/appointments', icon: 'calendar_month' },
-    ...(user?.role === 'OWNER'
-      ? [
-          { label: 'Branches', path: '/admin/branches', icon: 'domain' },
-          { label: 'Roles & Permissions', path: '/admin/roles', icon: 'shield_person' },
-          { label: 'Audit Logs', path: '/admin/audit-logs', icon: 'policy' },
-        ]
+    { label: 'Overview / አጠቃላይ', path: '/admin/employees/dashboard', icon: 'dashboard' },
+    { label: 'Appointments / ቀጠሮዎች', path: '/admin/appointments', icon: 'calendar_month' },
+    ...(hasPermission('manage_branches')
+      ? [{ label: 'Branches / ቅርንጫፎች', path: '/admin/branches', icon: 'domain' }]
+      : []),
+    ...(hasPermission('manage_roles') || user?.role === 'OWNER'
+      ? [{ label: 'Roles & Permissions / ሚናዎች', path: '/admin/roles', icon: 'shield_person' }]
+      : []),
+    ...(hasPermission('view_audit_logs')
+      ? [{ label: 'Audit Logs / ኦዲት', path: '/admin/audit-logs', icon: 'policy' }]
       : []),
   ];
 
   const serviceSubNav = [
-    { label: 'Master Catalog', path: '/admin/services', icon: 'auto_awesome' },
-    { label: 'Curate Ritual', path: '/admin/services/create', icon: 'add_circle' },
-    { label: 'Branch Governance', path: '/admin/services/branch-governance', icon: 'tune' },
+    { label: 'Master Catalog / ዋና ዝርዝር', path: '/admin/services', icon: 'auto_awesome' },
+    {
+      label: 'Branch Pricing / ቅርንጫፍ ዋጋ',
+      path: '/admin/services/pricing',
+      altPath: '/admin/services/branch-governance',
+      icon: 'tune',
+    },
   ];
 
   const employeeSubNav = [
-    { label: 'Staff Roster', path: '/admin/employees', icon: 'badge' },
-    { label: 'Working Schedule', path: '/admin/employees/schedule', icon: 'calendar_today' },
-    { label: 'Add Employee', path: '/admin/employees/add', icon: 'person_add' },
+    { label: 'Specialist Roster / የሰራተኞች ዝርዝር', path: '/admin/employees', icon: 'badge' },
+    {
+      label: 'Schedules & Shifts / የስራ ሰዓት',
+      path: '/admin/employees/schedules',
+      altPath: '/admin/employees/schedule',
+      icon: 'calendar_today',
+    },
   ];
-
-  const secondaryNav = [
-    { label: 'VIP Clientele', path: '/admin/clientele', icon: 'group' },
-    { label: 'Treasury & Invoices', path: '/admin/treasury', icon: 'payments' },
-  ];
-
-  const isEmployeeSectionActive = currentPath.startsWith('/admin/employees');
-  const isServicesSectionActive = currentPath.startsWith('/admin/services');
 
   return (
     <div className="bg-background min-h-screen text-on-surface font-sans flex antialiased">
@@ -120,128 +134,149 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                 Concierge &amp; Operations
               </span>
             </div>
-            <nav className="space-y-1 mt-1">
+            <nav className="space-y-1.5 mt-1">
               {navItems.map((item) => {
-                const isActive = currentPath === item.path;
+                const isActive = location.pathname === item.path;
                 return (
                   <Link
                     key={item.path}
                     to={item.path}
                     onClick={() => setMobileSidebarOpen(false)}
-                    className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-colors ${
+                    className={`flex items-center gap-3 px-3.5 py-2.5 rounded-r-xl transition-all ${
                       isActive
-                        ? 'bg-primary-container text-on-primary-container font-semibold shadow-sm'
-                        : 'text-surface-variant hover:bg-surface-variant/10 hover:text-surface-bright'
+                        ? 'bg-[rgba(212,175,55,0.12)] text-[#D4AF37] font-semibold border-l-4 border-[#D4AF37] shadow-sm'
+                        : 'text-[#FAF7F2]/70 hover:bg-[#181412] hover:text-[#D4AF37] border-l-4 border-transparent'
                     }`}
                   >
-                    <span className="material-symbols-outlined text-[19px]">{item.icon}</span>
-                    <span className="text-sm font-medium">{item.label}</span>
+                    <span
+                      className={`material-symbols-outlined text-[19px] ${
+                        isActive ? 'text-[#D4AF37]' : 'text-[#FAF7F2]/60'
+                      }`}
+                    >
+                      {item.icon}
+                    </span>
+                    <span className="text-sm">{item.label}</span>
                   </Link>
                 );
               })}
 
-              {/* Service Rituals Group */}
+              {/* Service Rituals Dropdown */}
               <div className="pt-1 pb-1">
-                <Link
-                  to="/admin/services"
-                  onClick={() => setMobileSidebarOpen(false)}
-                  className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-colors ${
+                <button
+                  type="button"
+                  onClick={() => setServicesOpen((prev) => !prev)}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all cursor-pointer ${
                     isServicesSectionActive
-                      ? 'bg-primary-container text-on-primary-container font-semibold shadow-sm'
-                      : 'text-surface-variant hover:bg-surface-variant/10 hover:text-surface-bright'
+                      ? 'text-[#D4AF37] font-semibold bg-[rgba(212,175,55,0.06)]'
+                      : 'text-[#FAF7F2]/70 hover:bg-[#181412] hover:text-[#D4AF37]'
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <span className="material-symbols-outlined text-[19px]">hotel_class</span>
-                    <span className="text-sm">Service Rituals</span>
+                    <span
+                      className={`material-symbols-outlined text-[19px] ${
+                        isServicesSectionActive ? 'text-[#D4AF37]' : 'text-[#FAF7F2]/60'
+                      }`}
+                    >
+                      hotel_class
+                    </span>
+                    <span className="text-sm font-medium">Service Rituals / አገልግሎቶች</span>
                   </div>
-                  <span className="material-symbols-outlined text-[16px]">expand_more</span>
-                </Link>
-
-                <div className="pl-7 pr-2 mt-1 space-y-0.5">
-                  {serviceSubNav.map((sub) => {
-                    const isSubActive = currentPath === sub.path;
-                    return (
-                      <Link
-                        key={sub.path}
-                        to={sub.path}
-                        onClick={() => setMobileSidebarOpen(false)}
-                        className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
-                          isSubActive
-                            ? 'bg-primary-container/80 text-on-primary-container font-semibold'
-                            : 'text-surface-variant hover:bg-surface-variant/10 hover:text-surface-bright'
-                        }`}
-                      >
-                        <span
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            isSubActive ? 'bg-on-primary-container' : 'bg-primary-fixed-dim'
-                          }`}
-                        />
-                        <span>{sub.label}</span>
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Employees Group */}
-              <div className="pt-1 pb-1">
-                <div
-                  className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-surface-variant ${
-                    isEmployeeSectionActive ? 'text-primary-fixed font-semibold' : ''
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="material-symbols-outlined text-[19px]">badge</span>
-                    <span className="text-sm">Employees</span>
-                  </div>
-                  <span className="material-symbols-outlined text-[16px] text-primary-fixed-dim">expand_more</span>
-                </div>
-
-                <div className="pl-7 pr-2 mt-1 space-y-0.5">
-                  {employeeSubNav.map((sub) => {
-                    const isSubActive = currentPath === sub.path;
-                    return (
-                      <Link
-                        key={sub.path}
-                        to={sub.path}
-                        onClick={() => setMobileSidebarOpen(false)}
-                        className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
-                          isSubActive
-                            ? 'bg-primary-container text-on-primary-container font-semibold'
-                            : 'text-surface-variant hover:bg-surface-variant/10 hover:text-surface-bright'
-                        }`}
-                      >
-                        <span
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            isSubActive ? 'bg-on-primary-container' : 'bg-primary-fixed-dim'
-                          }`}
-                        />
-                        <span>{sub.label}</span>
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {secondaryNav.map((item) => {
-                const isActive = currentPath === item.path;
-                return (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    onClick={() => setMobileSidebarOpen(false)}
-                    className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-colors ${
-                      isActive
-                        ? 'bg-primary-container text-on-primary-container font-semibold'
-                        : 'text-surface-variant hover:bg-surface-variant/10 hover:text-surface-bright'
+                  <span
+                    className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${
+                      servicesOpen ? 'rotate-180 text-[#D4AF37]' : 'text-[#FAF7F2]/40'
                     }`}
                   >
-                    <span className="material-symbols-outlined text-[19px]">{item.icon}</span>
-                    <span className="text-sm font-medium">{item.label}</span>
-                  </Link>
-                );
-              })}
+                    expand_more
+                  </span>
+                </button>
+
+                {servicesOpen && (
+                  <div className="pl-4 pr-2 mt-1 space-y-1">
+                    {serviceSubNav.map((sub) => {
+                      const isSubActive =
+                        location.pathname === sub.path || location.pathname === (sub as any).altPath;
+                      return (
+                        <Link
+                          key={sub.path}
+                          to={sub.path}
+                          onClick={() => setMobileSidebarOpen(false)}
+                          className={`flex items-center gap-2.5 px-3 py-2 rounded-r-lg text-xs transition-all ${
+                            isSubActive
+                              ? 'bg-[rgba(212,175,55,0.12)] text-[#D4AF37] font-semibold border-l-4 border-[#D4AF37]'
+                              : 'text-[#FAF7F2]/70 hover:bg-[#181412] hover:text-[#D4AF37] border-l-4 border-transparent'
+                          }`}
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              isSubActive ? 'bg-[#D4AF37]' : 'bg-[#FAF7F2]/30'
+                            }`}
+                          />
+                          <span>{sub.label}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Employees & Specialists Dropdown */}
+              <div className="pt-1 pb-1">
+                <button
+                  type="button"
+                  onClick={() => setEmployeesOpen((prev) => !prev)}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all cursor-pointer ${
+                    isEmployeeSectionActive
+                      ? 'text-[#D4AF37] font-semibold bg-[rgba(212,175,55,0.06)]'
+                      : 'text-[#FAF7F2]/70 hover:bg-[#181412] hover:text-[#D4AF37]'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`material-symbols-outlined text-[19px] ${
+                        isEmployeeSectionActive ? 'text-[#D4AF37]' : 'text-[#FAF7F2]/60'
+                      }`}
+                    >
+                      badge
+                    </span>
+                    <span className="text-sm font-medium">Employees / ሰራተኞች</span>
+                  </div>
+                  <span
+                    className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${
+                      employeesOpen ? 'rotate-180 text-[#D4AF37]' : 'text-[#FAF7F2]/40'
+                    }`}
+                  >
+                    expand_more
+                  </span>
+                </button>
+
+                {employeesOpen && (
+                  <div className="pl-4 pr-2 mt-1 space-y-1">
+                    {employeeSubNav.map((sub) => {
+                      const isSubActive =
+                        location.pathname === sub.path || location.pathname === (sub as any).altPath;
+                      return (
+                        <Link
+                          key={sub.path}
+                          to={sub.path}
+                          onClick={() => setMobileSidebarOpen(false)}
+                          className={`flex items-center gap-2.5 px-3 py-2 rounded-r-lg text-xs transition-all ${
+                            isSubActive
+                              ? 'bg-[rgba(212,175,55,0.12)] text-[#D4AF37] font-semibold border-l-4 border-[#D4AF37]'
+                              : 'text-[#FAF7F2]/70 hover:bg-[#181412] hover:text-[#D4AF37] border-l-4 border-transparent'
+                          }`}
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              isSubActive ? 'bg-[#D4AF37]' : 'bg-[#FAF7F2]/30'
+                            }`}
+                          />
+                          <span>{sub.label}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </nav>
           </div>
         </div>

@@ -9,6 +9,7 @@ interface AuthContextType {
   login: (user: AuthUserData, token: string) => void;
   logout: () => void;
   updateProfile: (data: Partial<AuthUserData>) => void;
+  hasPermission: (permissionName: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -49,10 +50,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const hasPermission = (permissionName: string): boolean => {
+    if (!user) return false;
+    if (user.role === 'OWNER') return true;
+    if (!user.permissions || !Array.isArray(user.permissions)) return false;
+    return user.permissions.includes(permissionName);
+  };
+
   const login = (newUser: AuthUserData, newToken: string) => {
-    setUser(newUser);
+    const userWithPerms: AuthUserData = {
+      ...newUser,
+      permissions: newUser.permissions || [],
+    };
+    setUser(userWithPerms);
     setToken(newToken);
-    persistSession(newUser, newToken);
+    persistSession(userWithPerms, newToken);
   };
 
   const logout = () => {
@@ -82,8 +94,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       try {
         const liveUser = await authApi.getMe(activeToken);
-        setUser(liveUser);
-        localStorage.setItem('eyob_user', JSON.stringify(liveUser));
+        const userWithPerms: AuthUserData = {
+          ...liveUser,
+          permissions: liveUser.permissions || [],
+        };
+        setUser(userWithPerms);
+        localStorage.setItem('eyob_user', JSON.stringify(userWithPerms));
       } catch (err) {
         console.warn('Session verification failed, clearing credentials:', err);
         setUser(null);
@@ -110,6 +126,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         logout,
         updateProfile,
+        hasPermission,
       }}
     >
       {children}

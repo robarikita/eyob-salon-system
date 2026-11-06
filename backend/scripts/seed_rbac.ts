@@ -23,6 +23,7 @@ export const STANDARD_PERMISSIONS = [
   { name: "view_reports", description: "Access income aggregations and performance reports" },
   { name: "view_audit_logs", description: "Inspect sensitive system audit logs" },
   { name: "manage_branches", description: "Create and govern branch locations" },
+  { name: "manage_roles", description: "Create, configure, and assign roles and permissions" },
 ];
 
 export async function seedRbac() {
