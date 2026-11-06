@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import prisma from "../../utils/prisma";
+import { hashPassword } from "../../utils/password";
 
 export class AdminController {
   /**
@@ -174,6 +175,115 @@ export class AdminController {
         status: "success",
         data: updatedRole,
       });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/branch-admins
+   * Protected: OWNER & BRANCH_ADMIN
+   */
+  static async getBranchAdmins(_req: Request, res: Response, next: NextFunction) {
+    try {
+      const admins = await prisma.user.findMany({
+        where: {
+          role: "BRANCH_ADMIN",
+        },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          role: true,
+          branchId: true,
+          branch: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              isActive: true,
+            },
+          },
+          customRole: {
+            include: {
+              permissions: {
+                include: {
+                  permission: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const systemAdminRole = await prisma.role.findUnique({
+        where: { name: "BRANCH_ADMIN" },
+        include: {
+          permissions: {
+            include: {
+              permission: true,
+            },
+          },
+        },
+      });
+
+      const formatted = admins.map((admin) => {
+        const perms = admin.customRole?.permissions
+          ? admin.customRole.permissions.map((rp) => rp.permission)
+          : systemAdminRole?.permissions.map((rp) => rp.permission) || [];
+
+        return {
+          id: admin.id,
+          name: `${admin.firstName} ${admin.lastName}`.trim(),
+          email: admin.email,
+          phone: admin.phone,
+          role: admin.role,
+          roleId: admin.customRole?.id || systemAdminRole?.id || null,
+          roleName: admin.customRole?.name || "BRANCH_ADMIN",
+          branch: admin.branch
+            ? {
+                id: admin.branch.id,
+                name: admin.branch.name,
+                slug: admin.branch.slug,
+                isActive: admin.branch.isActive,
+              }
+            : null,
+          permissions: perms,
+        };
+      });
+
+      res.status(200).json({
+        status: "success",
+        data: formatted,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/users/:id/reset-password
+   * Protected: OWNER only
+   */
+  static async resetUserPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { newPassword } = req.body;
+      if (!newPassword || newPassword.length < 8) {
+        res.status(400).json({ status: "error", message: "Password must be at least 8 characters" });
+        return;
+      }
+      const hashedPassword = await hashPassword(newPassword);
+      await prisma.user.update({
+        where: { id: req.params.id as string },
+        data: {
+          password: hashedPassword,
+          tokenVersion: { increment: 1 },
+        },
+      });
+      res.status(200).json({ status: "success", message: "Password updated successfully" });
     } catch (err) {
       next(err);
     }

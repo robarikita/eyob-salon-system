@@ -1,6 +1,7 @@
 import prisma from "../../utils/prisma";
 import { UserRole } from "@prisma/client";
 import { ValidationError, NotFoundError } from "../../errors/AppError";
+import { hashPassword } from "../../utils/password";
 import { z } from "zod";
 import {
   createBranchSchema,
@@ -63,10 +64,78 @@ export class BranchService {
         data: defaultHours,
       });
 
+      let adminUser = null;
+      if (data.admin) {
+        const existingUser = await tx.user.findFirst({
+          where: {
+            OR: [
+              { email: data.admin.email.toLowerCase() },
+              { phone: data.admin.phone },
+            ],
+          },
+        });
+
+        if (existingUser) {
+          throw new ValidationError(
+            `Admin user with email "${data.admin.email}" or phone "${data.admin.phone}" already exists.`
+          );
+        }
+
+        const hashedPassword = await hashPassword(data.admin.password);
+
+        let branchAdminRole = await tx.role.findUnique({
+          where: { name: "BRANCH_ADMIN" },
+        });
+
+        if (!branchAdminRole) {
+          branchAdminRole = await tx.role.create({
+            data: {
+              name: "BRANCH_ADMIN",
+              description: "Branch Administrator with local authority",
+              isSystemRole: true,
+            },
+          });
+        }
+
+        const nameParts = data.admin.name.trim().split(/\s+/);
+        const firstName = nameParts[0] || "Branch";
+        const lastName = nameParts.slice(1).join(" ") || "Admin";
+
+        const user = await tx.user.create({
+          data: {
+            firstName,
+            lastName,
+            email: data.admin.email.toLowerCase(),
+            phone: data.admin.phone,
+            password: hashedPassword,
+            role: "BRANCH_ADMIN",
+            roleId: branchAdminRole.id,
+            branchId: branch.id,
+          },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            role: true,
+            branchId: true,
+          },
+        });
+
+        adminUser = {
+          id: user.id,
+          name: `${user.firstName} ${user.lastName}`.trim(),
+          email: user.email,
+          phone: user.phone,
+        };
+      }
+
       return {
         ...branch,
         phone: branch.phoneNumber,
         address: branch.addressLine,
+        admin: adminUser,
       };
     });
   }

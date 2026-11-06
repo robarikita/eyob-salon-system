@@ -18,6 +18,14 @@ export const createBranchSchema = z
     description: z.string().optional().nullable(),
     timezone: z.string().default("Africa/Addis_Ababa"),
     slotBufferMinutes: z.number().int().min(0).default(10),
+    admin: z
+      .object({
+        name: z.string().min(2, "Admin name is required"),
+        email: z.string().email("Valid email required"),
+        phone: z.string().min(9, "Phone must be at least 9 characters"),
+        password: z.string().min(8, "Password must be at least 8 characters"),
+      })
+      .optional(),
   })
   .refine((data) => !!(data.phoneNumber || data.phone), {
     message: "Phone number is required",

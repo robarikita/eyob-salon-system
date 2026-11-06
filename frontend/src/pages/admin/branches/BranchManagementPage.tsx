@@ -63,11 +63,12 @@ export const BranchManagementPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  // Modals state
+  // Operating Hours state
   const [hoursModalBranch, setHoursModalBranch] = useState<BranchItem | null>(null);
   const [hoursFormData, setHoursFormData] = useState<BranchHoursItem[]>([]);
   const [savingHours, setSavingHours] = useState(false);
 
+  // Edit / Create Branch state
   const [editModalBranch, setEditModalBranch] = useState<BranchItem | null>(null);
   const [branchFormData, setBranchFormData] = useState({
     name: '',
@@ -81,9 +82,26 @@ export const BranchManagementPage: React.FC = () => {
   const [savingBranch, setSavingBranch] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
 
+  // In-Modal Admin Provisioning state
+  const [provisionAdmin, setProvisionAdmin] = useState(true);
+  const [adminFormData, setAdminFormData] = useState({
+    name: '',
+    email: '',
+    phone: '+251',
+    password: '',
+  });
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+
+  // Assign Admin state
   const [assignModalBranch, setAssignModalBranch] = useState<BranchItem | null>(null);
   const [assignUserId, setAssignUserId] = useState('');
   const [assigningAdmin, setAssigningAdmin] = useState(false);
+
+  // Reset Admin Password state
+  const [resetPasswordUser, setResetPasswordUser] = useState<BranchAdminUser | null>(null);
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [savingResetPassword, setSavingResetPassword] = useState(false);
 
   const token = localStorage.getItem('token') || localStorage.getItem('accessToken') || localStorage.getItem('eyob_auth_token');
 
@@ -163,7 +181,6 @@ export const BranchManagementPage: React.FC = () => {
       prev.map((item) => {
         if (item.dayOfWeek === dayOfWeek) {
           const updated = { ...item, [field]: val };
-          // If closeTime <= openTime and not closed, automatically encourage/require overnight
           if (field === 'closeTime' || field === 'openTime') {
             const [oH, oM] = (field === 'openTime' ? val : item.openTime).split(':').map(Number);
             const [cH, cM] = (field === 'closeTime' ? val : item.closeTime).split(':').map(Number);
@@ -233,6 +250,14 @@ export const BranchManagementPage: React.FC = () => {
         description: '',
         slotBufferMinutes: 10,
       });
+      setProvisionAdmin(true);
+      setAdminFormData({
+        name: '',
+        email: '',
+        phone: '+251',
+        password: '',
+      });
+      setShowAdminPassword(false);
     }
   };
 
@@ -244,18 +269,34 @@ export const BranchManagementPage: React.FC = () => {
       const url = isCreatingNew ? '/api/v1/branches' : `/api/v1/branches/${editModalBranch?.id}`;
       const method = isCreatingNew ? 'POST' : 'PATCH';
 
+      const payload: any = { ...branchFormData };
+      if (isCreatingNew && provisionAdmin) {
+        payload.admin = {
+          name: adminFormData.name.trim(),
+          email: adminFormData.email.trim().toLowerCase(),
+          phone: adminFormData.phone.trim(),
+          password: adminFormData.password,
+        };
+      }
+
       const res = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(branchFormData),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
       if (res.ok && data.success) {
-        showToast(isCreatingNew ? 'Branch created successfully' : 'Branch updated successfully');
+        showToast(
+          isCreatingNew
+            ? provisionAdmin
+              ? 'Branch & Admin account created successfully'
+              : 'Branch created successfully'
+            : 'Branch updated successfully'
+        );
         setEditModalBranch(null);
         setIsCreatingNew(false);
         fetchBranches();
@@ -296,6 +337,35 @@ export const BranchManagementPage: React.FC = () => {
       showToast('Error assigning administrator', 'error');
     } finally {
       setAssigningAdmin(false);
+    }
+  };
+
+  // Reset Admin Password
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetPasswordUser || !resetNewPassword) return;
+    try {
+      setSavingResetPassword(true);
+      const res = await fetch(`/api/v1/admin/users/${resetPasswordUser.id}/reset-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ newPassword: resetNewPassword }),
+      });
+      const data = await res.json();
+      if (res.ok && data.status === 'success') {
+        showToast(`Password updated for ${resetPasswordUser.name}`);
+        setResetPasswordUser(null);
+        setResetNewPassword('');
+      } else {
+        showToast(data.message || 'Failed to update password', 'error');
+      }
+    } catch {
+      showToast('Error resetting password', 'error');
+    } finally {
+      setSavingResetPassword(false);
     }
   };
 
@@ -414,26 +484,50 @@ export const BranchManagementPage: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Branch Administrator */}
-                    <div className="bg-[#120F0D] border border-[#2C2724] rounded-lg p-2.5 text-xs space-y-1">
+                    {/* Branch Administrator Badge Card */}
+                    <div className="bg-[#120F0D] border border-[#2C2724] rounded-lg p-3 text-xs space-y-2">
                       <div className="flex items-center justify-between text-[10px] uppercase font-bold text-[#A8A29E]">
                         <span>Administrator / አስተዳዳሪ</span>
                         {isOwner && (
-                          <button
-                            onClick={() => {
-                              setAssignModalBranch(branch);
-                              setAssignUserId(branch.admin?.id || '');
-                            }}
-                            className="text-[#D4AF37] hover:underline"
-                          >
-                            {branch.admin ? 'Reassign' : 'Assign'}
-                          </button>
+                          <div className="flex items-center gap-2">
+                            {branch.admin && (
+                              <button
+                                onClick={() => {
+                                  setResetPasswordUser(branch.admin || null);
+                                  setResetNewPassword('');
+                                }}
+                                className="text-[#D4AF37] hover:underline"
+                                title="Reset Administrator Password"
+                              >
+                                Reset Key
+                              </button>
+                            )}
+                            <button
+                              onClick={() => {
+                                setAssignModalBranch(branch);
+                                setAssignUserId(branch.admin?.id || '');
+                              }}
+                              className="text-stone-400 hover:text-white"
+                            >
+                              {branch.admin ? 'Reassign' : 'Assign'}
+                            </button>
+                          </div>
                         )}
                       </div>
+
                       {branch.admin ? (
-                        <div>
-                          <p className="font-semibold text-[#FAF7F2]">{branch.admin.name}</p>
-                          <p className="text-[11px] text-[#A8A29E] font-mono truncate">{branch.admin.email}</p>
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <p className="font-semibold text-[#FAF7F2]">
+                              Manager: {branch.admin.name}
+                            </p>
+                            <p className="text-[11px] text-[#A8A29E] font-mono truncate">
+                              {branch.admin.email}
+                            </p>
+                          </div>
+                          <span className="text-[10px] bg-[#231D1A] text-[#D4AF37] border border-[#D4AF37]/30 px-2 py-0.5 rounded font-mono uppercase font-bold">
+                            ADMIN
+                          </span>
                         </div>
                       ) : (
                         <p className="text-stone-500 italic text-[11px]">Unassigned</p>
@@ -610,7 +704,7 @@ export const BranchManagementPage: React.FC = () => {
         {/* Create / Edit Branch Modal (Owner Only) */}
         {(editModalBranch || isCreatingNew) && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
-            <div className="bg-[#181412] border border-[#2C2724] text-[#FAF7F2] rounded-xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="bg-[#181412] border border-[#2C2724] text-[#FAF7F2] rounded-xl max-w-xl w-full p-6 shadow-2xl space-y-4 my-8">
               <div className="flex items-center justify-between pb-3 border-b border-[#2C2724]">
                 <h3 className="text-lg font-serif font-bold text-[#D4AF37]">
                   {isCreatingNew ? t('branch.newBranch') : `${t('branch.edit')}: ${editModalBranch?.name}`}
@@ -627,6 +721,7 @@ export const BranchManagementPage: React.FC = () => {
               </div>
 
               <form onSubmit={handleSaveBranch} className="space-y-4 text-xs">
+                {/* Branch Details */}
                 <div>
                   <label className="block text-[11px] font-semibold text-[#A8A29E] mb-1">
                     Branch Name / ስም *
@@ -637,7 +732,7 @@ export const BranchManagementPage: React.FC = () => {
                     value={branchFormData.name}
                     onChange={(e) => setBranchFormData({ ...branchFormData, name: e.target.value })}
                     className="w-full bg-[#231D1A] border border-[#3E3834] rounded-lg px-3 py-2 text-[#FAF7F2] outline-none focus:border-[#D4AF37]"
-                    placeholder="e.g. Eyob Beauty Salon - Kazanchis"
+                    placeholder="e.g. Eyob Beauty Salon - Sarbet"
                   />
                 </div>
 
@@ -679,7 +774,7 @@ export const BranchManagementPage: React.FC = () => {
                     value={branchFormData.address}
                     onChange={(e) => setBranchFormData({ ...branchFormData, address: e.target.value })}
                     className="w-full bg-[#231D1A] border border-[#3E3834] rounded-lg px-3 py-2 text-[#FAF7F2] outline-none focus:border-[#D4AF37]"
-                    placeholder="e.g. Bole Bulbula, Around Mariam Church"
+                    placeholder="e.g. Sarbet, Near Pushkin Square"
                   />
                 </div>
 
@@ -694,6 +789,103 @@ export const BranchManagementPage: React.FC = () => {
                     className="w-full bg-[#231D1A] border border-[#3E3834] rounded-lg px-3 py-2 text-[#FAF7F2] outline-none focus:border-[#D4AF37]"
                   />
                 </div>
+
+                {/* Collapsible In-Modal Admin Provisioning (New Branch Only) */}
+                {isCreatingNew && (
+                  <div className="border border-[#3E3834] rounded-xl p-3.5 bg-[#120F0D] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="provision-admin-toggle"
+                          checked={provisionAdmin}
+                          onChange={(e) => setProvisionAdmin(e.target.checked)}
+                          className="accent-[#D4AF37] cursor-pointer"
+                        />
+                        <label htmlFor="provision-admin-toggle" className="font-semibold text-xs text-[#D4AF37] cursor-pointer">
+                          Branch Administrator Account / የአስተዳዳሪ መለያ
+                        </label>
+                      </div>
+                      <span className="text-[10px] text-[#A8A29E]">Provision Credentials</span>
+                    </div>
+
+                    {provisionAdmin && (
+                      <div className="space-y-3 pt-2.5 border-t border-[#2C2724]">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-[#A8A29E] mb-1">
+                              Admin Full Name / ሙሉ ስም *
+                            </label>
+                            <input
+                              type="text"
+                              required={provisionAdmin}
+                              value={adminFormData.name}
+                              onChange={(e) => setAdminFormData({ ...adminFormData, name: e.target.value })}
+                              className="w-full bg-[#231D1A] border border-[#3E3834] rounded-lg px-3 py-2 text-[#FAF7F2] outline-none focus:border-[#D4AF37]"
+                              placeholder="e.g. Tigist Alemu"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-[#A8A29E] mb-1">
+                              Admin Email / ኢሜይል *
+                            </label>
+                            <input
+                              type="email"
+                              required={provisionAdmin}
+                              value={adminFormData.email}
+                              onChange={(e) => setAdminFormData({ ...adminFormData, email: e.target.value })}
+                              className="w-full bg-[#231D1A] border border-[#3E3834] rounded-lg px-3 py-2 text-[#FAF7F2] font-mono outline-none focus:border-[#D4AF37]"
+                              placeholder="manager@eyobsalon.com"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-[#A8A29E] mb-1">
+                              Admin Phone / ስልክ *
+                            </label>
+                            <input
+                              type="text"
+                              required={provisionAdmin}
+                              value={adminFormData.phone}
+                              onChange={(e) => setAdminFormData({ ...adminFormData, phone: e.target.value })}
+                              className="w-full bg-[#231D1A] border border-[#3E3834] rounded-lg px-3 py-2 text-[#FAF7F2] font-mono outline-none focus:border-[#D4AF37]"
+                              placeholder="+251911..."
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-[#A8A29E] mb-1">
+                              Admin Password / የይለፍ ቃል *
+                            </label>
+                            <div className="relative">
+                              <input
+                                type={showAdminPassword ? 'text' : 'password'}
+                                required={provisionAdmin}
+                                minLength={8}
+                                value={adminFormData.password}
+                                onChange={(e) => setAdminFormData({ ...adminFormData, password: e.target.value })}
+                                className="w-full bg-[#231D1A] border border-[#3E3834] rounded-lg pl-3 pr-8 py-2 text-[#FAF7F2] font-mono outline-none focus:border-[#D4AF37]"
+                                placeholder="Min 8 chars"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowAdminPassword(!showAdminPassword)}
+                                className="absolute right-2.5 top-2.5 text-stone-400 hover:text-white"
+                              >
+                                <span className="material-symbols-outlined text-sm">
+                                  {showAdminPassword ? 'visibility_off' : 'visibility'}
+                                </span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="pt-3 border-t border-[#2C2724] flex items-center justify-end gap-3">
                   <button
@@ -773,10 +965,76 @@ export const BranchManagementPage: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Reset Password Modal (Owner Only) */}
+        {resetPasswordUser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+            <div className="bg-[#181412] border border-[#2C2724] text-[#FAF7F2] rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-[#2C2724]">
+                <div>
+                  <h3 className="text-base font-serif font-bold text-[#D4AF37]">
+                    Reset Credentials / የይለፍ ቃል ቀይር
+                  </h3>
+                  <p className="text-xs text-[#A8A29E]">{resetPasswordUser.name} ({resetPasswordUser.email})</p>
+                </div>
+                <button
+                  onClick={() => setResetPasswordUser(null)}
+                  className="text-stone-400 hover:text-white"
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+
+              <form onSubmit={handleResetPassword} className="space-y-4 text-xs">
+                <div>
+                  <label className="block text-[11px] font-semibold text-[#A8A29E] mb-1">
+                    New Password / አዲስ የይለፍ ቃል *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showResetPassword ? 'text' : 'password'}
+                      required
+                      minLength={8}
+                      value={resetNewPassword}
+                      onChange={(e) => setResetNewPassword(e.target.value)}
+                      className="w-full bg-[#231D1A] border border-[#3E3834] rounded-lg pl-3 pr-8 py-2 text-[#FAF7F2] font-mono outline-none focus:border-[#D4AF37]"
+                      placeholder="Min 8 characters"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowResetPassword(!showResetPassword)}
+                      className="absolute right-2.5 top-2.5 text-stone-400 hover:text-white"
+                    >
+                      <span className="material-symbols-outlined text-sm">
+                        {showResetPassword ? 'visibility_off' : 'visibility'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-[#2C2724] flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setResetPasswordUser(null)}
+                    className="px-4 py-2 bg-[#231D1A] hover:bg-[#2C2724] text-stone-300 rounded-lg font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingResetPassword}
+                    className="px-5 py-2 bg-[#D4AF37] hover:bg-[#c29f2f] text-[#0E0B09] rounded-lg font-bold uppercase tracking-wider transition shadow-md disabled:opacity-50"
+                  >
+                    {savingResetPassword ? 'Updating...' : 'Update Password'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </AdminLayout>
   );
 };
 
 export default BranchManagementPage;
-
