@@ -31,6 +31,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   const navItems = [
     { label: 'Overview', path: '/admin/employees/dashboard', icon: 'dashboard' },
     { label: 'Appointments', path: '/admin/appointments', icon: 'calendar_month' },
+    { label: 'Branches', path: '/admin/branches', icon: 'domain' },
     { label: 'Roles & Permissions', path: '/admin/roles', icon: 'shield_person' },
     ...(user?.role === 'OWNER' ? [{ label: 'Audit Logs', path: '/admin/audit-logs', icon: 'policy' }] : []),
   ];

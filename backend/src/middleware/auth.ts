@@ -66,7 +66,11 @@ export const requireBranchAccess = (req: Request, res: Response, next: NextFunct
     return next();
   }
 
-  const requestedBranchId = req.params.branchId || req.body.branchId || req.query.branchId;
+  const requestedBranchId =
+    req.params.branchId ||
+    (req.params.id && req.baseUrl.includes("branches") ? req.params.id : undefined) ||
+    req.body.branchId ||
+    req.query.branchId;
 
   if (requestedBranchId && requestedBranchId !== req.user.branchId) {
     return res.status(403).json({

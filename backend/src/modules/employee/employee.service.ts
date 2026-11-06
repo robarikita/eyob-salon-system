@@ -494,12 +494,13 @@ export class EmployeeService {
 
     this.checkBranchAccess(currentUser, employee.branchId);
 
-    const branchHoursMap = new Map<number, { openTime: string; closeTime: string; isClosed: boolean }>();
+    const branchHoursMap = new Map<number, { openTime: string; closeTime: string; isClosed: boolean; closesNextDay: boolean }>();
     employee.branch.branchHours.forEach((bh) => {
       branchHoursMap.set(bh.dayOfWeek, {
         openTime: bh.openTime,
         closeTime: bh.closeTime,
         isClosed: bh.isClosed,
+        closesNextDay: bh.closesNextDay ?? false,
       });
     });
 
@@ -514,15 +515,38 @@ export class EmployeeService {
         }
 
         if (branchHour) {
-          if (schedule.startTime < branchHour.openTime || schedule.endTime > branchHour.closeTime) {
-            throw new ValidationError(
-              `Schedule Validation Error: Shift on day ${schedule.dayOfWeek} (${schedule.startTime} - ${schedule.endTime}) falls outside branch operating hours (${branchHour.openTime} - ${branchHour.closeTime}).`
-            );
-          }
-        }
+          if (branchHour.closesNextDay) {
+            const [bOpenH, bOpenM] = branchHour.openTime.split(":").map(Number);
+            const [bCloseH, bCloseM] = branchHour.closeTime.split(":").map(Number);
+            const bOpenMin = bOpenH * 60 + bOpenM;
+            let bCloseMin = bCloseH * 60 + bCloseM;
+            if (bCloseMin <= bOpenMin) bCloseMin += 24 * 60;
 
-        if (schedule.startTime >= schedule.endTime) {
-          throw new ValidationError(`Shift start time (${schedule.startTime}) must precede end time (${schedule.endTime}).`);
+            const [sStartH, sStartM] = schedule.startTime.split(":").map(Number);
+            const [sEndH, sEndM] = schedule.endTime.split(":").map(Number);
+            const sStartMin = sStartH * 60 + sStartM;
+            let sEndMin = sEndH * 60 + sEndM;
+            if (sEndMin <= sStartMin) sEndMin += 24 * 60;
+
+            if (sStartMin < bOpenMin || sEndMin > bCloseMin) {
+              throw new ValidationError(
+                `Schedule Validation Error: Shift on day ${schedule.dayOfWeek} (${schedule.startTime} - ${schedule.endTime}) falls outside branch operating hours (${branchHour.openTime} - ${branchHour.closeTime}).`
+              );
+            }
+          } else {
+            if (schedule.startTime < branchHour.openTime || schedule.endTime > branchHour.closeTime) {
+              throw new ValidationError(
+                `Schedule Validation Error: Shift on day ${schedule.dayOfWeek} (${schedule.startTime} - ${schedule.endTime}) falls outside branch operating hours (${branchHour.openTime} - ${branchHour.closeTime}).`
+              );
+            }
+            if (schedule.startTime >= schedule.endTime) {
+              throw new ValidationError(`Shift start time (${schedule.startTime}) must precede end time (${schedule.endTime}).`);
+            }
+          }
+        } else {
+          if (schedule.startTime >= schedule.endTime) {
+            throw new ValidationError(`Shift start time (${schedule.startTime}) must precede end time (${schedule.endTime}).`);
+          }
         }
 
         if (schedule.breakStartTime && schedule.breakEndTime) {

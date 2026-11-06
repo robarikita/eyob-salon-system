@@ -146,3 +146,4 @@ export const AuditLogsPage: React.FC = () => {
 };
 
 export default AuditLogsPage;
+

@@ -18,3 +18,4 @@ router.post("/roles", authorize("OWNER"), AdminController.createRole);
 router.patch("/roles/:id/permissions", authorize("OWNER"), AdminController.updateRolePermissions);
 
 export default router;
+

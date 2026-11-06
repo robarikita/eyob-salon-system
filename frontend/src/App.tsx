@@ -43,6 +43,7 @@ import AdminAppointmentsPage from './pages/admin/appointments/AdminAppointmentsP
 // RBAC & System Audit Pages
 import RolesManagementPage from './pages/admin/roles/RolesManagementPage';
 import AuditLogsPage from './pages/admin/audit/AuditLogsPage';
+import BranchManagementPage from './pages/admin/branches/BranchManagementPage';
 
 export const App: React.FC = () => {
   return (
@@ -214,6 +215,15 @@ export const App: React.FC = () => {
               element={
                 <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
                   <RolesManagementPage />
+                </ProtectedRoute>
+              }
+            />
+            {/* Branch Management & Operating Hours */}
+            <Route
+              path="/admin/branches"
+              element={
+                <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
+                  <BranchManagementPage />
                 </ProtectedRoute>
               }
             />

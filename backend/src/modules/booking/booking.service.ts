@@ -81,7 +81,10 @@ export class BookingService {
     const [openH, openM] = branchHour.openTime.split(":").map(Number);
     const [closeH, closeM] = branchHour.closeTime.split(":").map(Number);
     const branchOpenMinutes = openH * 60 + openM;
-    const branchCloseMinutes = closeH * 60 + closeM;
+    let branchCloseMinutes = closeH * 60 + closeM;
+    if (branchHour.closesNextDay || branchCloseMinutes <= branchOpenMinutes) {
+      branchCloseMinutes += 24 * 60;
+    }
 
     // 3. Determine target specialists
     let targetEmployeeIds: string[] = [];
@@ -148,7 +151,10 @@ export class BookingService {
       const [shiftStartH, shiftStartM] = effectiveSchedule.startTime.split(":").map(Number);
       const [shiftEndH, shiftEndM] = effectiveSchedule.endTime.split(":").map(Number);
       const shiftStartMinutes = shiftStartH * 60 + shiftStartM;
-      const shiftEndMinutes = shiftEndH * 60 + shiftEndM;
+      let shiftEndMinutes = shiftEndH * 60 + shiftEndM;
+      if (branchHour.closesNextDay && shiftEndMinutes <= shiftStartMinutes) {
+        shiftEndMinutes += 24 * 60;
+      }
 
       let breakStartMinutes: number | null = null;
       let breakEndMinutes: number | null = null;

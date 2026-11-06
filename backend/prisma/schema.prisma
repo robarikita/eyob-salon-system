@@ -94,6 +94,8 @@ model Branch {
   phoneNumber      String
   addressLine      String
   city             String   @default("Addis Ababa")
+  description      String?
+  timezone         String   @default("Africa/Addis_Ababa")
   isActive         Boolean  @default(true)
   slotBufferMinutes Int     @default(10) // e.g., 10 minutes between appointments
   
@@ -146,11 +148,12 @@ model RolePermission {
 }
 
 model BranchHours {
-  id        String  @id @default(uuid())
-  dayOfWeek Int     // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-  openTime  String  // e.g., "08:00"
-  closeTime String  // e.g., "18:00"
-  isClosed  Boolean @default(false)
+  id            String  @id @default(uuid())
+  dayOfWeek     Int     // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  openTime      String  // e.g., "08:00"
+  closeTime     String  // e.g., "18:00"
+  closesNextDay Boolean @default(false)
+  isClosed      Boolean @default(false)
   
   // Relations
   branchId  String

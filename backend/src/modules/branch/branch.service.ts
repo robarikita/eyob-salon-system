@@ -2,40 +2,60 @@ import prisma from "../../utils/prisma";
 import { UserRole } from "@prisma/client";
 import { ValidationError, NotFoundError } from "../../errors/AppError";
 import { z } from "zod";
-import { createBranchSchema, updateBranchSchema, setBranchHoursSchema } from "./branch.schema";
+import {
+  createBranchSchema,
+  updateBranchSchema,
+  updateBusinessHoursSchema,
+  normalizeDayOfWeek,
+  getDayName,
+} from "./branch.schema";
 
 type CreateBranchInput = z.infer<typeof createBranchSchema>;
 type UpdateBranchInput = z.infer<typeof updateBranchSchema>;
-type SetBranchHoursInput = z.infer<typeof setBranchHoursSchema>;
+type UpdateBusinessHoursInput = z.infer<typeof updateBusinessHoursSchema>;
 
 export class BranchService {
   static async createBranch(data: CreateBranchInput) {
+    const slug =
+      data.slug ||
+      data.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "");
+
     const existingBranch = await prisma.branch.findUnique({
-      where: { slug: data.slug },
+      where: { slug },
     });
 
     if (existingBranch) {
-      throw new ValidationError("Branch slug must be unique");
+      throw new ValidationError(`Branch slug "${slug}" is already in use.`);
     }
+
+    const phoneNumber = data.phoneNumber || data.phone || "";
+    const addressLine = data.addressLine || data.address || "";
 
     return prisma.$transaction(async (tx) => {
       const branch = await tx.branch.create({
         data: {
           name: data.name,
-          slug: data.slug,
-          phoneNumber: data.phoneNumber,
-          addressLine: data.addressLine,
-          city: data.city,
-          slotBufferMinutes: data.slotBufferMinutes,
+          slug,
+          phoneNumber,
+          addressLine,
+          city: data.city || "Addis Ababa",
+          description: data.description || null,
+          timezone: data.timezone || "Africa/Addis_Ababa",
+          slotBufferMinutes: data.slotBufferMinutes ?? 10,
+          isActive: true,
         },
       });
 
-      // Default 7-day operating hours
+      // Default 7-day operating hours (09:00 - 20:00)
       const defaultHours = Array.from({ length: 7 }, (_, i) => ({
         branchId: branch.id,
         dayOfWeek: i,
         openTime: "09:00",
         closeTime: "20:00",
+        closesNextDay: false,
         isClosed: false,
       }));
 
@@ -43,25 +63,63 @@ export class BranchService {
         data: defaultHours,
       });
 
-      return branch;
+      return {
+        ...branch,
+        phone: branch.phoneNumber,
+        address: branch.addressLine,
+      };
     });
   }
 
   static async getAllBranches(userRole?: UserRole) {
-    if (userRole === "OWNER") {
-      return prisma.branch.findMany({
+    if (userRole === "OWNER" || userRole === "BRANCH_ADMIN") {
+      const branches = await prisma.branch.findMany({
         include: {
           _count: {
-            select: { employees: true, services: true },
+            select: { employees: true, services: true, bookings: true },
+          },
+          users: {
+            where: { role: "BRANCH_ADMIN" },
+            select: { id: true, firstName: true, lastName: true, email: true, phone: true },
+          },
+          branchHours: {
+            orderBy: { dayOfWeek: "asc" },
           },
         },
+        orderBy: { createdAt: "asc" },
       });
+
+      return branches.map((b) => ({
+        ...b,
+        phone: b.phoneNumber,
+        address: b.addressLine,
+        admin: b.users[0]
+          ? {
+              id: b.users[0].id,
+              name: `${b.users[0].firstName} ${b.users[0].lastName}`.trim(),
+              email: b.users[0].email,
+              phone: b.users[0].phone,
+            }
+          : null,
+      }));
     }
 
-    // Public / CUSTOMER / EMPLOYEE view
-    return prisma.branch.findMany({
+    // Public / Customer / Employee view
+    const branches = await prisma.branch.findMany({
       where: { isActive: true },
+      include: {
+        branchHours: {
+          orderBy: { dayOfWeek: "asc" },
+        },
+      },
+      orderBy: { createdAt: "asc" },
     });
+
+    return branches.map((b) => ({
+      ...b,
+      phone: b.phoneNumber,
+      address: b.addressLine,
+    }));
   }
 
   static async getBranchById(id: string) {
@@ -71,6 +129,10 @@ export class BranchService {
         branchHours: {
           orderBy: { dayOfWeek: "asc" },
         },
+        users: {
+          where: { role: "BRANCH_ADMIN" },
+          select: { id: true, firstName: true, lastName: true, email: true, phone: true },
+        },
       },
     });
 
@@ -78,7 +140,19 @@ export class BranchService {
       throw new NotFoundError("Branch not found");
     }
 
-    return branch;
+    return {
+      ...branch,
+      phone: branch.phoneNumber,
+      address: branch.addressLine,
+      admin: branch.users[0]
+        ? {
+            id: branch.users[0].id,
+            name: `${branch.users[0].firstName} ${branch.users[0].lastName}`.trim(),
+            email: branch.users[0].email,
+            phone: branch.users[0].phone,
+          }
+        : null,
+    };
   }
 
   static async updateBranch(id: string, data: UpdateBranchInput) {
@@ -92,54 +166,268 @@ export class BranchService {
       }
     }
 
-    return prisma.branch.update({
+    const updatePayload: any = {};
+    if (data.name !== undefined) updatePayload.name = data.name;
+    if (data.slug !== undefined) updatePayload.slug = data.slug;
+    if (data.city !== undefined) updatePayload.city = data.city;
+    if (data.description !== undefined) updatePayload.description = data.description;
+    if (data.timezone !== undefined) updatePayload.timezone = data.timezone;
+    if (data.slotBufferMinutes !== undefined) updatePayload.slotBufferMinutes = data.slotBufferMinutes;
+    if (data.isActive !== undefined) updatePayload.isActive = data.isActive;
+
+    if (data.phoneNumber !== undefined || data.phone !== undefined) {
+      updatePayload.phoneNumber = data.phoneNumber || data.phone;
+    }
+    if (data.addressLine !== undefined || data.address !== undefined) {
+      updatePayload.addressLine = data.addressLine || data.address;
+    }
+
+    const updated = await prisma.branch.update({
       where: { id },
-      data,
+      data: updatePayload,
+      include: {
+        users: {
+          where: { role: "BRANCH_ADMIN" },
+          select: { id: true, firstName: true, lastName: true, email: true, phone: true },
+        },
+      },
     });
+
+    return {
+      ...updated,
+      phone: updated.phoneNumber,
+      address: updated.addressLine,
+      admin: updated.users[0]
+        ? {
+            id: updated.users[0].id,
+            name: `${updated.users[0].firstName} ${updated.users[0].lastName}`.trim(),
+            email: updated.users[0].email,
+            phone: updated.users[0].phone,
+          }
+        : null,
+    };
   }
 
-  static async setBranchHours(branchId: string, hours: SetBranchHoursInput) {
+  static async toggleBranchStatus(id: string, isActive?: boolean) {
+    const branch = await prisma.branch.findUnique({ where: { id } });
+    if (!branch) throw new NotFoundError("Branch not found");
+
+    const newStatus = typeof isActive === "boolean" ? isActive : !branch.isActive;
+
+    const updated = await prisma.branch.update({
+      where: { id },
+      data: { isActive: newStatus },
+    });
+
+    return {
+      ...updated,
+      phone: updated.phoneNumber,
+      address: updated.addressLine,
+    };
+  }
+
+  static async assignBranchAdmin(branchId: string, userId: string) {
     const branch = await prisma.branch.findUnique({ where: { id: branchId } });
     if (!branch) throw new NotFoundError("Branch not found");
 
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundError("User not found");
+
+    const branchAdminRole = await prisma.role.findUnique({
+      where: { name: "BRANCH_ADMIN" },
+    });
+
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        branchId,
+        role: "BRANCH_ADMIN",
+        ...(branchAdminRole ? { roleId: branchAdminRole.id } : {}),
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        role: true,
+        branchId: true,
+      },
+    });
+
+    return {
+      ...updatedUser,
+      name: `${updatedUser.firstName} ${updatedUser.lastName}`.trim(),
+    };
+  }
+
+  static async getBranchHours(branchId: string) {
+    const branch = await prisma.branch.findUnique({ where: { id: branchId } });
+    if (!branch) throw new NotFoundError("Branch not found");
+
+    const hours = await prisma.branchHours.findMany({
+      where: { branchId },
+      orderBy: { dayOfWeek: "asc" },
+    });
+
+    return hours.map((h) => ({
+      ...h,
+      dayName: getDayName(h.dayOfWeek),
+    }));
+  }
+
+  static async setBranchHours(branchId: string, hoursInput: UpdateBusinessHoursInput) {
+    const branch = await prisma.branch.findUnique({ where: { id: branchId } });
+    if (!branch) throw new NotFoundError("Branch not found");
+
+    const hoursArray = Array.isArray(hoursInput) ? hoursInput : [hoursInput];
+
+    // Validate overnight logic and normalize dayOfWeek
+    const validatedHours = hoursArray.map((hour) => {
+      const dayNum = normalizeDayOfWeek(hour.dayOfWeek);
+
+      const [openH, openM] = hour.openTime.split(":").map(Number);
+      const [closeH, closeM] = hour.closeTime.split(":").map(Number);
+      const openMinutes = openH * 60 + openM;
+      const closeMinutes = closeH * 60 + closeM;
+
+      // If business is not closed and close time is <= open time, closesNextDay MUST be true
+      if (!hour.isClosed && closeMinutes <= openMinutes) {
+        if (!hour.closesNextDay) {
+          throw new ValidationError(
+            `Operating hours ending at or before open time (${hour.openTime} -> ${hour.closeTime}) must have closesNextDay set to true.`
+          );
+        }
+      }
+
+      return {
+        dayOfWeek: dayNum,
+        openTime: hour.openTime,
+        closeTime: hour.closeTime,
+        closesNextDay: hour.closesNextDay ?? false,
+        isClosed: hour.isClosed ?? false,
+      };
+    });
+
     return prisma.$transaction(async (tx) => {
-      for (const hour of hours) {
+      for (const item of validatedHours) {
         await tx.branchHours.upsert({
           where: {
             branchId_dayOfWeek: {
               branchId,
-              dayOfWeek: hour.dayOfWeek,
+              dayOfWeek: item.dayOfWeek,
             },
           },
           update: {
-            openTime: hour.openTime,
-            closeTime: hour.closeTime,
-            isClosed: hour.isClosed,
+            openTime: item.openTime,
+            closeTime: item.closeTime,
+            closesNextDay: item.closesNextDay,
+            isClosed: item.isClosed,
           },
           create: {
             branchId,
-            dayOfWeek: hour.dayOfWeek,
-            openTime: hour.openTime,
-            closeTime: hour.closeTime,
-            isClosed: hour.isClosed,
+            dayOfWeek: item.dayOfWeek,
+            openTime: item.openTime,
+            closeTime: item.closeTime,
+            closesNextDay: item.closesNextDay,
+            isClosed: item.isClosed,
           },
         });
       }
 
-      return tx.branchHours.findMany({
+      const allHours = await tx.branchHours.findMany({
         where: { branchId },
         orderBy: { dayOfWeek: "asc" },
       });
+
+      return allHours.map((h) => ({
+        ...h,
+        dayName: getDayName(h.dayOfWeek),
+      }));
     });
   }
 
-  static async toggleBranchStatus(id: string) {
-    const branch = await prisma.branch.findUnique({ where: { id } });
-    if (!branch) throw new NotFoundError("Branch not found");
-
-    return prisma.branch.update({
-      where: { id },
-      data: { isActive: !branch.isActive },
+  /**
+   * Helper to check if a specific date and time slot belongs to a branch operating window,
+   * accounting for overnight business hours that span past midnight into the next morning.
+   */
+  static async getOperatingSessionForSlot(
+    branchId: string,
+    slotDate: Date,
+    slotTime: string
+  ): Promise<{
+    isOpen: boolean;
+    businessDayOfWeek: number;
+    businessDayName: string;
+    isOvernightWindow: boolean;
+  }> {
+    const branch = await prisma.branch.findUnique({
+      where: { id: branchId },
+      include: { branchHours: true },
     });
+
+    if (!branch || !branch.isActive) {
+      return {
+        isOpen: false,
+        businessDayOfWeek: -1,
+        businessDayName: "CLOSED",
+        isOvernightWindow: false,
+      };
+    }
+
+    const currentDayOfWeek = slotDate.getDay(); // 0 = Sun..6 = Sat
+    const prevDayOfWeek = (currentDayOfWeek + 6) % 7; // e.g. Saturday (6) -> Friday (5)
+
+    const [slotH, slotM] = slotTime.split(":").map(Number);
+    const slotMinutes = slotH * 60 + slotM;
+
+    // 1. Check if previous day had overnight hours (closesNextDay: true) that extend into this morning
+    const prevDayHours = branch.branchHours.find((bh) => bh.dayOfWeek === prevDayOfWeek);
+    if (prevDayHours && !prevDayHours.isClosed && prevDayHours.closesNextDay) {
+      const [closeH, closeM] = prevDayHours.closeTime.split(":").map(Number);
+      const closeMinutes = closeH * 60 + closeM;
+      if (slotMinutes < closeMinutes) {
+        return {
+          isOpen: true,
+          businessDayOfWeek: prevDayOfWeek,
+          businessDayName: getDayName(prevDayOfWeek),
+          isOvernightWindow: true,
+        };
+      }
+    }
+
+    // 2. Check current day's standard hours
+    const currentDayHours = branch.branchHours.find((bh) => bh.dayOfWeek === currentDayOfWeek);
+    if (!currentDayHours || currentDayHours.isClosed) {
+      return {
+        isOpen: false,
+        businessDayOfWeek: currentDayOfWeek,
+        businessDayName: getDayName(currentDayOfWeek),
+        isOvernightWindow: false,
+      };
+    }
+
+    const [openH, openM] = currentDayHours.openTime.split(":").map(Number);
+    const [closeH, closeM] = currentDayHours.closeTime.split(":").map(Number);
+    const openMinutes = openH * 60 + openM;
+    const closeMinutes = currentDayHours.closesNextDay
+      ? (closeH + 24) * 60 + closeM
+      : closeH * 60 + closeM;
+
+    if (slotMinutes >= openMinutes && slotMinutes < closeMinutes) {
+      return {
+        isOpen: true,
+        businessDayOfWeek: currentDayOfWeek,
+        businessDayName: getDayName(currentDayOfWeek),
+        isOvernightWindow: false,
+      };
+    }
+
+    return {
+      isOpen: false,
+      businessDayOfWeek: currentDayOfWeek,
+      businessDayName: getDayName(currentDayOfWeek),
+      isOvernightWindow: false,
+    };
   }
 }

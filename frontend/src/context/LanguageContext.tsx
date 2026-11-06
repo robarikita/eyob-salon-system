@@ -53,6 +53,20 @@ const DICTIONARY: Record<string, TranslationEntry> = {
   'roles.owner': { en: 'Owner', am: 'ባለቤት', bilingual: 'Owner / ባለቤት' },
   'auth.forgotPassword': { en: 'Forgot Password?', am: 'የይለፍ ቃል ረሱ?', bilingual: 'Forgot Password? / የይለፍ ቃል ረሱ?' },
   'auth.resetPassword': { en: 'Reset Password', am: 'የይለፍ ቃል ቀይር', bilingual: 'Reset Password / የይለፍ ቃል ቀይር' },
+
+  // Branch Management
+  'nav.branches': { en: 'Branches', am: 'ቅርንጫፎች', bilingual: 'Branches / ቅርንጫፎች' },
+  'branch.management': { en: 'Branch Management', am: 'የቅርንጫፍ አስተዳደር', bilingual: 'Branch Management / የቅርንጫፍ አስተዳደር' },
+  'branch.newBranch': { en: 'New Branch', am: 'አዲስ ቅርንጫፍ', bilingual: 'New Branch / አዲስ ቅርንጫፍ' },
+  'branch.hours': { en: 'Operating Hours', am: 'የስራ ሰዓት', bilingual: 'Operating Hours / የስራ ሰዓት' },
+  'branch.active': { en: 'Active', am: 'ንቁ', bilingual: 'Active / ንቁ' },
+  'branch.inactive': { en: 'Inactive', am: 'ዝግ', bilingual: 'Inactive / ዝግ' },
+  'branch.closed': { en: 'Closed', am: 'ዝግ', bilingual: 'Closed / ዝግ' },
+  'branch.overnight': { en: 'Overnight', am: 'እስከ ሌሊት', bilingual: 'Overnight / እስከ ሌሊት' },
+  'branch.saveSchedule': { en: 'Save Schedule', am: 'መዝግብ', bilingual: 'Save Schedule / መዝግብ' },
+  'branch.edit': { en: 'Edit', am: 'አድስ', bilingual: 'Edit / አድስ' },
+  'branch.statusToggle': { en: 'Status Toggle', am: 'ሁኔታ ቀይር', bilingual: 'Status Toggle / ሁኔታ ቀይር' },
+  'branch.assignAdmin': { en: 'Assign Admin', am: 'አስተዳዳሪ መድብ', bilingual: 'Assign Admin / አስተዳዳሪ መድብ' },
 };
 
 interface LanguageContextType {
