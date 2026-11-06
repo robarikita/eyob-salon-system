@@ -251,6 +251,66 @@ export class BranchService {
       updatePayload.addressLine = data.addressLine || data.address;
     }
 
+    if (data.admin) {
+      const existingAdmin = await prisma.user.findFirst({
+        where: { branchId: id, role: "BRANCH_ADMIN" },
+      });
+
+      const adminUpdate: any = {};
+      if (data.admin.name) {
+        const nameParts = data.admin.name.trim().split(/\s+/);
+        adminUpdate.firstName = nameParts[0] || "Branch";
+        adminUpdate.lastName = nameParts.slice(1).join(" ") || "Admin";
+      }
+      if (data.admin.email) {
+        adminUpdate.email = data.admin.email.toLowerCase().trim();
+      }
+      if (data.admin.phone) {
+        adminUpdate.phone = data.admin.phone.trim();
+      }
+      if (data.admin.password) {
+        adminUpdate.password = await hashPassword(data.admin.password);
+        adminUpdate.tokenVersion = { increment: 1 };
+      }
+
+      if (existingAdmin) {
+        await prisma.user.update({
+          where: { id: existingAdmin.id },
+          data: adminUpdate,
+        });
+      } else if (data.admin.name && data.admin.email && data.admin.phone) {
+        let branchAdminRole = await prisma.role.findUnique({
+          where: { name: "BRANCH_ADMIN" },
+        });
+        if (!branchAdminRole) {
+          branchAdminRole = await prisma.role.create({
+            data: {
+              name: "BRANCH_ADMIN",
+              description: "Branch Administrator with local authority",
+              isSystemRole: true,
+            },
+          });
+        }
+        const hashedPassword = data.admin.password
+          ? await hashPassword(data.admin.password)
+          : await hashPassword("Default@123");
+
+        const nameParts = data.admin.name.trim().split(/\s+/);
+        await prisma.user.create({
+          data: {
+            firstName: nameParts[0] || "Branch",
+            lastName: nameParts.slice(1).join(" ") || "Admin",
+            email: data.admin.email.toLowerCase().trim(),
+            phone: data.admin.phone.trim(),
+            password: hashedPassword,
+            role: "BRANCH_ADMIN",
+            roleId: branchAdminRole.id,
+            branchId: id,
+          },
+        });
+      }
+    }
+
     const updated = await prisma.branch.update({
       where: { id },
       data: updatePayload,
@@ -274,6 +334,38 @@ export class BranchService {
             phone: updated.users[0].phone,
           }
         : null,
+    };
+  }
+
+  static async deleteBranch(id: string) {
+    const branch = await prisma.branch.findUnique({ where: { id } });
+    if (!branch) throw new NotFoundError("Branch not found");
+
+    const updated = await prisma.branch.update({
+      where: { id },
+      data: { isActive: false },
+    });
+
+    // Revoke / cancel active bookings for this branch
+    await prisma.booking.updateMany({
+      where: {
+        branchId: id,
+        status: { in: ["PENDING_PAYMENT", "CONFIRMED"] },
+      },
+      data: {
+        status: "CANCELLED",
+        cancellationReason: "Branch permanently or temporarily closed by salon administration.",
+      },
+    });
+
+    return {
+      success: true,
+      message: `Branch "${branch.name}" successfully deactivated and archived.`,
+      data: {
+        id: updated.id,
+        name: updated.name,
+        isActive: false,
+      },
     };
   }
 

@@ -46,6 +46,15 @@ export class BranchController {
     }
   }
 
+  static async deleteBranch(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await BranchService.deleteBranch(req.params.id as string);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async toggleBranchStatus(req: Request, res: Response, next: NextFunction) {
     try {
       const isActive = typeof req.body?.isActive === "boolean" ? req.body.isActive : undefined;

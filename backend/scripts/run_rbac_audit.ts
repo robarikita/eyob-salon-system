@@ -176,6 +176,31 @@ async function runRbacAudit() {
   // -------------------------------------------------------------
   console.log(">> Area 3: Verifying Dynamic Granular Permission Checks...");
 
+  const currentAdminUser = await prisma.user.findUnique({
+    where: { email: "admin.bole@eyobsalon.com" },
+    include: { customRole: true },
+  });
+  const branchAdminRole = await prisma.role.findUnique({ where: { name: "BRANCH_ADMIN" } });
+  const managePricesPerm = await prisma.permission.findUnique({ where: { name: "manage_prices" } });
+  const targetRoleId = currentAdminUser?.roleId || branchAdminRole?.id;
+
+  // Ensure target role has `manage_prices` for test 3a
+  if (targetRoleId && managePricesPerm) {
+    await prisma.rolePermission.upsert({
+      where: {
+        roleId_permissionId: {
+          roleId: targetRoleId,
+          permissionId: managePricesPerm.id,
+        },
+      },
+      update: {},
+      create: {
+        roleId: targetRoleId,
+        permissionId: managePricesPerm.id,
+      },
+    });
+  }
+
   // 3a. Bole Admin with `manage_prices` updates branch price for Bole Bulbula
   const updatePriceWithPerm = await putJson(
     `/services/${service.id}/branches/${boleBranch.id}`,
@@ -196,17 +221,12 @@ async function runRbacAudit() {
     priceUpdatePassed
   );
 
-  // 3b. Temporarily remove `manage_prices` permission from BRANCH_ADMIN role
-  const branchAdminRole = await prisma.role.findUnique({ where: { name: "BRANCH_ADMIN" } });
-  const managePricesPerm = await prisma.permission.findUnique({ where: { name: "manage_prices" } });
-
-  if (branchAdminRole && managePricesPerm) {
-    await prisma.rolePermission.delete({
+  // 3b. Temporarily remove `manage_prices` permission from admin's role
+  if (targetRoleId && managePricesPerm) {
+    await prisma.rolePermission.deleteMany({
       where: {
-        roleId_permissionId: {
-          roleId: branchAdminRole.id,
-          permissionId: managePricesPerm.id,
-        },
+        roleId: targetRoleId,
+        permissionId: managePricesPerm.id,
       },
     });
   }
@@ -233,18 +253,18 @@ async function runRbacAudit() {
     priceDeniedWithoutPerm
   );
 
-  // Restore `manage_prices` to BRANCH_ADMIN role
-  if (branchAdminRole && managePricesPerm) {
+  // Restore `manage_prices` to admin role
+  if (targetRoleId && managePricesPerm) {
     await prisma.rolePermission.upsert({
       where: {
         roleId_permissionId: {
-          roleId: branchAdminRole.id,
+          roleId: targetRoleId,
           permissionId: managePricesPerm.id,
         },
       },
       update: {},
       create: {
-        roleId: branchAdminRole.id,
+        roleId: targetRoleId,
         permissionId: managePricesPerm.id,
       },
     });

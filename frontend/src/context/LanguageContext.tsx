@@ -65,6 +65,7 @@ const DICTIONARY: Record<string, TranslationEntry> = {
   'branch.overnight': { en: 'Overnight', am: 'እስከ ሌሊት', bilingual: 'Overnight / እስከ ሌሊት' },
   'branch.saveSchedule': { en: 'Save Schedule', am: 'መዝግብ', bilingual: 'Save Schedule / መዝግብ' },
   'branch.edit': { en: 'Edit', am: 'አድስ', bilingual: 'Edit / አድስ' },
+  'branch.delete': { en: 'Delete', am: 'አጥፋ', bilingual: 'Delete / አጥፋ' },
   'branch.statusToggle': { en: 'Status Toggle', am: 'ሁኔታ ቀይር', bilingual: 'Status Toggle / ሁኔታ ቀይር' },
   'branch.assignAdmin': { en: 'Assign Admin', am: 'አስተዳዳሪ መድብ', bilingual: 'Assign Admin / አስተዳዳሪ መድብ' },
 };

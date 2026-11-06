@@ -288,4 +288,99 @@ export class AdminController {
       next(err);
     }
   }
+
+  /**
+   * PATCH /api/v1/admin/branch-admins/:id/permissions
+   * Protected: OWNER only
+   * Isolates permissions per branch administrator using branch-scoped custom role
+   */
+  static async updateAdminPermissions(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = req.params.id as string;
+      const { permissionIds } = req.body;
+
+      if (!Array.isArray(permissionIds)) {
+        res.status(400).json({ status: "error", message: "permissionIds must be an array" });
+        return;
+      }
+
+      const adminUser = await prisma.user.findUnique({
+        where: { id },
+        include: { branch: true, customRole: true },
+      });
+
+      if (!adminUser) {
+        res.status(404).json({ status: "error", message: "Branch admin user not found" });
+        return;
+      }
+
+      const branchSlug = adminUser.branch?.slug || adminUser.branchId || "custom";
+      const scopedRoleName = `BRANCH_ADMIN_${branchSlug.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
+
+      // Find or create independent role for this branch admin
+      let scopedRole = await prisma.role.findFirst({
+        where: {
+          OR: [
+            { id: adminUser.roleId || undefined },
+            { name: scopedRoleName },
+          ],
+          isSystemRole: false,
+        },
+      });
+
+      if (!scopedRole) {
+        scopedRole = await prisma.role.create({
+          data: {
+            name: scopedRoleName,
+            description: `Scoped permissions for ${adminUser.branch?.name || "branch"} administrator`,
+            branchId: adminUser.branchId,
+            isSystemRole: false,
+          },
+        });
+      }
+
+      // Link user to this scoped role
+      if (adminUser.roleId !== scopedRole.id) {
+        await prisma.user.update({
+          where: { id: adminUser.id },
+          data: { roleId: scopedRole.id },
+        });
+      }
+
+      // Re-assign permissions on this scoped role
+      await prisma.rolePermission.deleteMany({
+        where: { roleId: scopedRole.id },
+      });
+
+      for (const pId of permissionIds) {
+        await prisma.rolePermission.create({
+          data: {
+            roleId: scopedRole.id,
+            permissionId: pId,
+          },
+        });
+      }
+
+      const updatedRole = await prisma.role.findUnique({
+        where: { id: scopedRole.id },
+        include: {
+          permissions: {
+            include: { permission: true },
+          },
+        },
+      });
+
+      res.status(200).json({
+        status: "success",
+        data: {
+          userId: adminUser.id,
+          roleId: scopedRole.id,
+          roleName: scopedRole.name,
+          permissions: updatedRole?.permissions.map((rp) => rp.permission) || [],
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
 }

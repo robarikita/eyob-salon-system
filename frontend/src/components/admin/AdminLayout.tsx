@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { LanguageToggle } from '../common/LanguageToggle';
@@ -22,6 +22,20 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   const currentPath = activePath || location.pathname;
   const [currentBranch, setCurrentBranch] = useState(selectedBranch);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [assignedBranchName, setAssignedBranchName] = useState<string>('');
+
+  useEffect(() => {
+    if (user?.role === 'BRANCH_ADMIN' && user.branchId) {
+      fetch(`/api/v1/branches/${user.branchId}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.data?.name) {
+            setAssignedBranchName(data.data.name);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [user?.branchId, user?.role]);
 
   const handleBranchSelect = (val: string) => {
     setCurrentBranch(val);
@@ -31,9 +45,13 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   const navItems = [
     { label: 'Overview', path: '/admin/employees/dashboard', icon: 'dashboard' },
     { label: 'Appointments', path: '/admin/appointments', icon: 'calendar_month' },
-    { label: 'Branches', path: '/admin/branches', icon: 'domain' },
-    { label: 'Roles & Permissions', path: '/admin/roles', icon: 'shield_person' },
-    ...(user?.role === 'OWNER' ? [{ label: 'Audit Logs', path: '/admin/audit-logs', icon: 'policy' }] : []),
+    ...(user?.role === 'OWNER'
+      ? [
+          { label: 'Branches', path: '/admin/branches', icon: 'domain' },
+          { label: 'Roles & Permissions', path: '/admin/roles', icon: 'shield_person' },
+          { label: 'Audit Logs', path: '/admin/audit-logs', icon: 'policy' },
+        ]
+      : []),
   ];
 
   const serviceSubNav = [
@@ -275,7 +293,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
             {user?.role === 'BRANCH_ADMIN' ? (
               <div className="flex items-center gap-2 bg-surface-container-low border border-primary/20 rounded-xl px-3.5 py-1.5 shadow-sm text-xs font-semibold text-primary">
                 <span className="material-symbols-outlined text-[17px]">location_on</span>
-                <span>Bole Bulbula</span>
+                <span>{assignedBranchName || 'Assigned Branch'}</span>
               </div>
             ) : (
               <div className="relative flex items-center bg-surface-container-low rounded-xl px-3 py-1.5 shadow-sm">
@@ -324,14 +342,14 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
             >
               <div className="hidden sm:flex flex-col text-right">
                 <span className="text-xs font-bold text-on-surface">
-                  {user ? `${user.firstName} ${user.lastName}` : 'Eyob Hailu'}
+                  {user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Administrator' : 'Administrator'}
                 </span>
                 <span className="text-[11px] text-secondary">
                   {user?.role === 'OWNER' ? 'Proprietor' : user?.role || 'Admin'}
                 </span>
               </div>
               <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-white shadow-sm font-serif font-bold text-sm">
-                {user ? `${user.firstName[0]}${user.lastName[0]}` : 'EH'}
+                {user ? `${user.firstName?.[0] || 'A'}${user.lastName?.[0] || ''}` : 'A'}
               </div>
             </Link>
 

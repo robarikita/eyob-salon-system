@@ -51,6 +51,14 @@ export const updateBranchSchema = z.object({
   timezone: z.string().optional(),
   slotBufferMinutes: z.number().int().min(0).optional(),
   isActive: z.boolean().optional(),
+  admin: z
+    .object({
+      name: z.string().min(2).optional(),
+      email: z.string().email().optional(),
+      phone: z.string().min(9).optional(),
+      password: z.string().min(8).optional(),
+    })
+    .optional(),
 });
 
 export const assignAdminSchema = z.object({

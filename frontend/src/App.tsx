@@ -209,20 +209,20 @@ export const App: React.FC = () => {
               }
             />
 
-            {/* Roles & Permissions Governance */}
+            {/* Roles & Permissions Governance (OWNER Only) */}
             <Route
               path="/admin/roles"
               element={
-                <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
+                <ProtectedRoute allowedRoles={['OWNER']}>
                   <RolesManagementPage />
                 </ProtectedRoute>
               }
             />
-            {/* Branch Management & Operating Hours */}
+            {/* Branch Management & Operating Hours (OWNER Only) */}
             <Route
               path="/admin/branches"
               element={
-                <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
+                <ProtectedRoute allowedRoles={['OWNER']}>
                   <BranchManagementPage />
                 </ProtectedRoute>
               }

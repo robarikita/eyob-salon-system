@@ -43,6 +43,7 @@ export const RolesManagementPage: React.FC = () => {
   const [permissions, setPermissions] = useState<PermissionItem[]>([]);
   const [branchAdmins, setBranchAdmins] = useState<BranchAdminItem[]>([]);
   const [selectedRole, setSelectedRole] = useState<RoleItem | null>(null);
+  const [selectedAdmin, setSelectedAdmin] = useState<BranchAdminItem | null>(null);
   const [selectedPermIds, setSelectedPermIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -74,7 +75,7 @@ export const RolesManagementPage: React.FC = () => {
 
       if (rolesData.status === 'success') {
         setRoles(rolesData.data);
-        if (rolesData.data.length > 0 && !selectedRole) {
+        if (rolesData.data.length > 0 && !selectedRole && !selectedAdmin) {
           setSelectedRole(rolesData.data[0]);
           setSelectedPermIds(rolesData.data[0].permissions.map((p: any) => p.permission.id));
         }
@@ -97,23 +98,20 @@ export const RolesManagementPage: React.FC = () => {
   }, []);
 
   const handleSelectRole = (role: RoleItem) => {
+    setSelectedAdmin(null);
     setSelectedRole(role);
     setSelectedPermIds(role.permissions.map((p) => p.permission.id));
     setNotification(null);
   };
 
   const handleEditAdminPermissions = (admin: BranchAdminItem) => {
-    const targetRole =
-      roles.find((r) => r.id === admin.roleId) ||
-      roles.find((r) => r.name === admin.roleName) ||
-      roles.find((r) => r.name === 'BRANCH_ADMIN');
-
-    if (targetRole) {
-      handleSelectRole(targetRole);
-      const matrixEl = document.getElementById('permissions-matrix-section');
-      if (matrixEl) {
-        matrixEl.scrollIntoView({ behavior: 'smooth' });
-      }
+    setSelectedRole(null);
+    setSelectedAdmin(admin);
+    setSelectedPermIds(admin.permissions.map((p) => p.id));
+    setNotification(null);
+    const matrixEl = document.getElementById('permissions-matrix-section');
+    if (matrixEl) {
+      matrixEl.scrollIntoView({ behavior: 'smooth' });
     }
   };
 
@@ -125,10 +123,14 @@ export const RolesManagementPage: React.FC = () => {
   };
 
   const handleSavePermissions = async () => {
-    if (!selectedRole || !isOwner) return;
+    if ((!selectedRole && !selectedAdmin) || !isOwner) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/v1/admin/roles/${selectedRole.id}/permissions`, {
+      const url = selectedAdmin
+        ? `/api/v1/admin/branch-admins/${selectedAdmin.id}/permissions`
+        : `/api/v1/admin/roles/${selectedRole!.id}/permissions`;
+
+      const res = await fetch(url, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -138,7 +140,11 @@ export const RolesManagementPage: React.FC = () => {
       });
       const data = await res.json();
       if (data.status === 'success') {
-        setNotification('Permissions updated successfully.');
+        setNotification(
+          selectedAdmin
+            ? `Independent permissions saved for ${selectedAdmin.name} (${selectedAdmin.branch?.name || 'Branch'}).`
+            : `Permissions updated successfully for ${selectedRole!.name}.`
+        );
         await fetchData();
       } else {
         alert(data.message || 'Update failed');
@@ -256,66 +262,80 @@ export const RolesManagementPage: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  branchAdmins.map((admin) => (
-                    <tr key={admin.id} className="hover:bg-[#231D1A]/50 transition-colors">
-                      {/* Name & Email */}
-                      <td className="py-3 px-3">
-                        <p className="font-semibold text-[#FAF7F2]">{admin.name}</p>
-                        <p className="text-[11px] text-[#D4AF37] font-mono">{admin.email}</p>
-                        {admin.phone && (
-                          <p className="text-[10px] text-[#A8A29E] font-mono">{admin.phone}</p>
-                        )}
-                      </td>
+                  branchAdmins.map((admin) => {
+                    const isEditing = selectedAdmin?.id === admin.id;
+                    return (
+                      <tr
+                        key={admin.id}
+                        className={`transition-colors ${
+                          isEditing
+                            ? 'bg-[#231D1A] border-l-2 border-l-[#D4AF37]'
+                            : 'hover:bg-[#231D1A]/50'
+                        }`}
+                      >
+                        {/* Name & Email */}
+                        <td className="py-3 px-3">
+                          <p className="font-semibold text-[#FAF7F2]">{admin.name}</p>
+                          <p className="text-[11px] text-[#D4AF37] font-mono">{admin.email}</p>
+                          {admin.phone && (
+                            <p className="text-[10px] text-[#A8A29E] font-mono">{admin.phone}</p>
+                          )}
+                        </td>
 
-                      {/* Assigned Branch */}
-                      <td className="py-3 px-3">
-                        {admin.branch ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#231D1A] text-[#FAF7F2] border border-[#3E3834]">
-                            <span className="material-symbols-outlined text-xs text-[#D4AF37]">location_on</span>
-                            {admin.branch.name}
-                          </span>
-                        ) : (
-                          <span className="text-stone-500 italic">Unassigned</span>
-                        )}
-                      </td>
-
-                      {/* Status */}
-                      <td className="py-3 px-3">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-950/70 text-emerald-400 border border-emerald-800/40">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                          Active / ንቁ
-                        </span>
-                      </td>
-
-                      {/* Permissions Chips */}
-                      <td className="py-3 px-3 max-w-md">
-                        <div className="flex flex-wrap gap-1.5">
-                          {admin.permissions.map((p) => (
-                            <span
-                              key={p.id}
-                              className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#231D1A] text-[#FAF7F2]/90 border border-[#3E3834]"
-                              title={p.description}
-                            >
-                              {p.name}
+                        {/* Assigned Branch */}
+                        <td className="py-3 px-3">
+                          {admin.branch ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#181412] text-[#FAF7F2] border border-[#3E3834]">
+                              <span className="material-symbols-outlined text-xs text-[#D4AF37]">location_on</span>
+                              {admin.branch.name}
                             </span>
-                          ))}
-                        </div>
-                      </td>
+                          ) : (
+                            <span className="text-stone-500 italic">Unassigned</span>
+                          )}
+                        </td>
 
-                      {/* Actions */}
-                      <td className="py-3 px-3 text-right">
-                        {isOwner && (
-                          <button
-                            onClick={() => handleEditAdminPermissions(admin)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#231D1A] hover:bg-[#D4AF37] hover:text-[#0E0B09] text-[#D4AF37] border border-[#D4AF37]/40 rounded-lg text-xs font-semibold transition-all cursor-pointer"
-                          >
-                            <span className="material-symbols-outlined text-xs">tune</span>
-                            <span>Edit Permissions / ፍቃድ ቀይር</span>
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))
+                        {/* Status */}
+                        <td className="py-3 px-3">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-950/70 text-emerald-400 border border-emerald-800/40">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            Active / ንቁ
+                          </span>
+                        </td>
+
+                        {/* Permissions Chips */}
+                        <td className="py-3 px-3 max-w-md">
+                          <div className="flex flex-wrap gap-1.5">
+                            {admin.permissions.map((p) => (
+                              <span
+                                key={p.id}
+                                className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#181412] text-[#FAF7F2]/90 border border-[#3E3834]"
+                                title={p.description}
+                              >
+                                {p.name}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+
+                        {/* Actions */}
+                        <td className="py-3 px-3 text-right">
+                          {isOwner && (
+                            <button
+                              onClick={() => handleEditAdminPermissions(admin)}
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                                isEditing
+                                  ? 'bg-[#D4AF37] text-[#0E0B09] font-bold'
+                                  : 'bg-[#231D1A] hover:bg-[#D4AF37] hover:text-[#0E0B09] text-[#D4AF37] border border-[#D4AF37]/40'
+                              }`}
+                            >
+                              <span className="material-symbols-outlined text-xs">tune</span>
+                              <span>{isEditing ? 'Editing / በመቀየር ላይ' : 'Edit Permissions / ፍቃድ ቀይር'}</span>
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -367,18 +387,24 @@ export const RolesManagementPage: React.FC = () => {
 
           {/* Permissions Matrix (8 cols) */}
           <div className="lg:col-span-8 bg-[#181412] rounded-xl border border-[#2C2724] p-6 shadow-xl flex flex-col justify-between space-y-6">
-            {selectedRole ? (
+            {selectedAdmin || selectedRole ? (
               <div className="space-y-6">
-                <div className="flex items-center justify-between pb-4 border-b border-[#2C2724]">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#2C2724]">
                   <div>
                     <h2 className="text-lg font-serif font-bold text-[#FAF7F2] flex items-center gap-2">
-                      <span>{selectedRole.name}</span>
+                      <span>
+                        {selectedAdmin
+                          ? `${selectedAdmin.name} (${selectedAdmin.branch?.name || 'Branch'})`
+                          : selectedRole?.name}
+                      </span>
                       <span className="text-xs font-normal text-[#A8A29E]">
                         ({selectedPermIds.length} of {permissions.length} active)
                       </span>
                     </h2>
                     <p className="text-xs text-[#A8A29E] mt-0.5">
-                      {selectedRole.description || 'System standard role'}
+                      {selectedAdmin
+                        ? 'Independent per-branch administrator permissions. Changes update an isolated branch role without affecting others.'
+                        : (selectedRole?.description || 'System standard role')}
                     </p>
                   </div>
 

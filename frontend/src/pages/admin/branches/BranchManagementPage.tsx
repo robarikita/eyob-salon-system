@@ -103,6 +103,10 @@ export const BranchManagementPage: React.FC = () => {
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [savingResetPassword, setSavingResetPassword] = useState(false);
 
+  // Delete Branch state
+  const [deleteConfirmBranch, setDeleteConfirmBranch] = useState<BranchItem | null>(null);
+  const [deletingBranch, setDeletingBranch] = useState(false);
+
   const token = localStorage.getItem('token') || localStorage.getItem('accessToken') || localStorage.getItem('eyob_auth_token');
 
   const fetchBranches = async () => {
@@ -132,30 +136,6 @@ export const BranchManagementPage: React.FC = () => {
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setNotification({ text, type });
     setTimeout(() => setNotification(null), 4000);
-  };
-
-  // Toggle status
-  const handleToggleStatus = async (branch: BranchItem) => {
-    if (!isOwner) return;
-    try {
-      const res = await fetch(`/api/v1/branches/${branch.id}/status`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ isActive: !branch.isActive }),
-      });
-      if (res.ok) {
-        showToast(`${branch.name} ${!branch.isActive ? 'activated' : 'deactivated'}`);
-        fetchBranches();
-      } else {
-        const err = await res.json();
-        showToast(err.message || 'Status update failed', 'error');
-      }
-    } catch {
-      showToast('Error toggling branch status', 'error');
-    }
   };
 
   // Open hours editor
@@ -224,6 +204,33 @@ export const BranchManagementPage: React.FC = () => {
     }
   };
 
+  // Delete Branch Handler
+  const handleDeleteBranch = async () => {
+    if (!deleteConfirmBranch) return;
+    try {
+      setDeletingBranch(true);
+      const res = await fetch(`/api/v1/branches/${deleteConfirmBranch.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message || `${deleteConfirmBranch.name} deactivated and active bookings cancelled.`);
+        setDeleteConfirmBranch(null);
+        fetchBranches();
+      } else {
+        showToast(data.message || 'Failed to deactivate branch', 'error');
+      }
+    } catch {
+      showToast('Error deactivating branch', 'error');
+    } finally {
+      setDeletingBranch(false);
+    }
+  };
+
   // Open Edit / Create Modal
   const handleOpenEdit = (branch?: BranchItem) => {
     if (branch) {
@@ -238,6 +245,13 @@ export const BranchManagementPage: React.FC = () => {
         description: branch.description || '',
         slotBufferMinutes: branch.slotBufferMinutes || 10,
       });
+      setAdminFormData({
+        name: branch.admin?.name || '',
+        email: branch.admin?.email || '',
+        phone: branch.admin?.phone || '+251',
+        password: '',
+      });
+      setShowAdminPassword(false);
     } else {
       setIsCreatingNew(true);
       setEditModalBranch(null);
@@ -270,13 +284,26 @@ export const BranchManagementPage: React.FC = () => {
       const method = isCreatingNew ? 'POST' : 'PATCH';
 
       const payload: any = { ...branchFormData };
-      if (isCreatingNew && provisionAdmin) {
-        payload.admin = {
-          name: adminFormData.name.trim(),
-          email: adminFormData.email.trim().toLowerCase(),
-          phone: adminFormData.phone.trim(),
-          password: adminFormData.password,
-        };
+      if (isCreatingNew) {
+        if (provisionAdmin) {
+          payload.admin = {
+            name: adminFormData.name.trim(),
+            email: adminFormData.email.trim().toLowerCase(),
+            phone: adminFormData.phone.trim(),
+            password: adminFormData.password,
+          };
+        }
+      } else {
+        const adminPayload: any = {};
+        if (adminFormData.name.trim()) adminPayload.name = adminFormData.name.trim();
+        if (adminFormData.email.trim()) adminPayload.email = adminFormData.email.trim().toLowerCase();
+        if (adminFormData.phone.trim()) adminPayload.phone = adminFormData.phone.trim();
+        if (adminFormData.password && adminFormData.password.length >= 8) {
+          adminPayload.password = adminFormData.password;
+        }
+        if (Object.keys(adminPayload).length > 0) {
+          payload.admin = adminPayload;
+        }
       }
 
       const res = await fetch(url, {
@@ -536,39 +563,38 @@ export const BranchManagementPage: React.FC = () => {
                   </div>
 
                   {/* Actions Footer */}
-                  <div className="pt-4 mt-4 border-t border-[#2C2724] flex items-center justify-between gap-2">
+                  <div className="pt-4 mt-4 border-t border-[#2C2724] space-y-2">
                     <button
+                      type="button"
                       onClick={() => handleOpenHoursModal(branch)}
-                      className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-[#231D1A] hover:bg-[#2C2724] text-[#FAF7F2] border border-[#3E3834] rounded-lg text-xs font-semibold transition-colors"
+                      className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-[#231D1A] hover:bg-[#2C2724] text-[#FAF7F2] border border-[#3E3834] rounded-lg text-xs font-semibold transition-colors shadow-sm"
                     >
                       <span className="material-symbols-outlined text-sm text-[#D4AF37]">pace</span>
                       <span>{t('branch.hours')}</span>
                     </button>
 
                     {isOwner && (
-                      <>
+                      <div className="grid grid-cols-2 gap-2">
                         <button
+                          type="button"
                           onClick={() => handleOpenEdit(branch)}
-                          className="p-1.5 bg-[#231D1A] hover:bg-[#2C2724] text-[#FAF7F2] border border-[#3E3834] rounded-lg text-xs transition-colors"
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-[#231D1A] hover:bg-[#2C2724] text-[#D4AF37] border border-[#D4AF37]/40 hover:border-[#D4AF37] rounded-lg text-xs font-semibold transition-colors"
                           title={t('branch.edit')}
                         >
                           <span className="material-symbols-outlined text-sm">edit</span>
+                          <span>{t('branch.edit')}</span>
                         </button>
 
                         <button
-                          onClick={() => handleToggleStatus(branch)}
-                          className={`p-1.5 border rounded-lg text-xs transition-colors ${
-                            branch.isActive
-                              ? 'bg-red-950/40 text-red-300 border-red-900/50 hover:bg-red-900/50'
-                              : 'bg-emerald-950/40 text-emerald-300 border-emerald-900/50 hover:bg-emerald-900/50'
-                          }`}
-                          title={t('branch.statusToggle')}
+                          type="button"
+                          onClick={() => setDeleteConfirmBranch(branch)}
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-red-950/30 hover:bg-red-950/60 text-red-300 border border-red-900/40 hover:border-red-800 rounded-lg text-xs font-semibold transition-colors"
+                          title={t('branch.delete')}
                         >
-                          <span className="material-symbols-outlined text-sm">
-                            {branch.isActive ? 'power_settings_new' : 'check'}
-                          </span>
+                          <span className="material-symbols-outlined text-sm">delete</span>
+                          <span>{t('branch.delete')}</span>
                         </button>
-                      </>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -790,8 +816,8 @@ export const BranchManagementPage: React.FC = () => {
                   />
                 </div>
 
-                {/* Collapsible In-Modal Admin Provisioning (New Branch Only) */}
-                {isCreatingNew && (
+                {/* In-Modal Admin Provisioning / Editing */}
+                {isCreatingNew ? (
                   <div className="border border-[#3E3834] rounded-xl p-3.5 bg-[#120F0D] space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -885,6 +911,85 @@ export const BranchManagementPage: React.FC = () => {
                       </div>
                     )}
                   </div>
+                ) : (
+                  <div className="border border-[#3E3834] rounded-xl p-3.5 bg-[#120F0D] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-semibold text-xs text-[#D4AF37]">
+                        Branch Administrator Account / የአስተዳዳሪ መለያ
+                      </h4>
+                      <span className="text-[10px] text-[#A8A29E]">Manager Credentials</span>
+                    </div>
+
+                    <div className="space-y-3 pt-2.5 border-t border-[#2C2724]">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-[#A8A29E] mb-1">
+                            Admin Full Name / ሙሉ ስም
+                          </label>
+                          <input
+                            type="text"
+                            value={adminFormData.name}
+                            onChange={(e) => setAdminFormData({ ...adminFormData, name: e.target.value })}
+                            className="w-full bg-[#231D1A] border border-[#3E3834] rounded-lg px-3 py-2 text-[#FAF7F2] outline-none focus:border-[#D4AF37]"
+                            placeholder="e.g. Tigist Alemu"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-semibold text-[#A8A29E] mb-1">
+                            Admin Email / ኢሜይል
+                          </label>
+                          <input
+                            type="email"
+                            value={adminFormData.email}
+                            onChange={(e) => setAdminFormData({ ...adminFormData, email: e.target.value })}
+                            className="w-full bg-[#231D1A] border border-[#3E3834] rounded-lg px-3 py-2 text-[#FAF7F2] font-mono outline-none focus:border-[#D4AF37]"
+                            placeholder="manager@eyobsalon.com"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-[#A8A29E] mb-1">
+                            Admin Phone / ስልክ
+                          </label>
+                          <input
+                            type="text"
+                            value={adminFormData.phone}
+                            onChange={(e) => setAdminFormData({ ...adminFormData, phone: e.target.value })}
+                            className="w-full bg-[#231D1A] border border-[#3E3834] rounded-lg px-3 py-2 text-[#FAF7F2] font-mono outline-none focus:border-[#D4AF37]"
+                            placeholder="+251911..."
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-semibold text-[#A8A29E] mb-1">
+                            New Password / አዲስ የይለፍ ቃል (Optional)
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showAdminPassword ? 'text' : 'password'}
+                              minLength={8}
+                              value={adminFormData.password}
+                              onChange={(e) => setAdminFormData({ ...adminFormData, password: e.target.value })}
+                              className="w-full bg-[#231D1A] border border-[#3E3834] rounded-lg pl-3 pr-8 py-2 text-[#FAF7F2] font-mono outline-none focus:border-[#D4AF37]"
+                              placeholder="Leave blank to keep current"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowAdminPassword(!showAdminPassword)}
+                              className="absolute right-2.5 top-2.5 text-stone-400 hover:text-white"
+                            >
+                              <span className="material-symbols-outlined text-sm">
+                                {showAdminPassword ? 'visibility_off' : 'visibility'}
+                              </span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 )}
 
                 <div className="pt-3 border-t border-[#2C2724] flex items-center justify-end gap-3">
@@ -907,6 +1012,54 @@ export const BranchManagementPage: React.FC = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Confirmation Modal (Owner Only) */}
+        {deleteConfirmBranch && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+            <div className="bg-[#181412] border border-red-900/60 text-[#FAF7F2] rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b border-[#2C2724]">
+                <div className="w-10 h-10 rounded-full bg-red-950/80 border border-red-800 flex items-center justify-center text-red-400">
+                  <span className="material-symbols-outlined">warning</span>
+                </div>
+                <div>
+                  <h3 className="text-base font-serif font-bold text-red-400">
+                    Deactivate Branch / ቅርንጫፍ አጥፋ
+                  </h3>
+                  <p className="text-xs text-[#FAF7F2] font-semibold">{deleteConfirmBranch.name}</p>
+                </div>
+              </div>
+
+              <div className="space-y-2 text-xs text-[#A8A29E]">
+                <p>
+                  Are you sure you want to deactivate and remove this branch from active salon operations?
+                </p>
+                <div className="p-3 bg-red-950/30 border border-red-900/40 rounded-lg text-red-300">
+                  <span className="font-semibold block mb-0.5">Warning / ማስጠንቀቂያ:</span>
+                  All active, pending, and confirmed appointments for this branch will be immediately revoked and cancelled.
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-[#2C2724] flex items-center justify-end gap-3 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmBranch(null)}
+                  disabled={deletingBranch}
+                  className="px-4 py-2 bg-[#231D1A] hover:bg-[#2C2724] text-stone-300 rounded-lg font-semibold transition"
+                >
+                  Cancel / ሰርዝ
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteBranch}
+                  disabled={deletingBranch}
+                  className="px-5 py-2 bg-red-700 hover:bg-red-800 text-white rounded-lg font-bold uppercase tracking-wider transition shadow-md disabled:opacity-50"
+                >
+                  {deletingBranch ? 'Deactivating...' : 'Confirm Delete / አጥፋ'}
+                </button>
+              </div>
             </div>
           </div>
         )}

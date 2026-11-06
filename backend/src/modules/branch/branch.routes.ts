@@ -4,7 +4,6 @@ import {
   authenticate,
   authorize,
   requireBranchAccess,
-  requirePermission,
 } from "../../middleware/auth";
 
 const router = Router();
@@ -23,22 +22,26 @@ router.get("/", optionalAuth, BranchController.getAllBranches);
 router.get("/:id", optionalAuth, BranchController.getBranchById);
 router.get("/:id/hours", optionalAuth, BranchController.getBranchHours);
 
-// Protected management routes
+// Protected management routes (Owner Only)
 router.post(
   "/",
   authenticate,
-  authorize("OWNER", "BRANCH_ADMIN"),
-  requirePermission("manage_branches"),
+  authorize("OWNER"),
   BranchController.createBranch
 );
 
 router.patch(
   "/:id",
   authenticate,
-  authorize("OWNER", "BRANCH_ADMIN"),
-  requireBranchAccess,
-  requirePermission("manage_branches"),
+  authorize("OWNER"),
   BranchController.updateBranch
+);
+
+router.delete(
+  "/:id",
+  authenticate,
+  authorize("OWNER"),
+  BranchController.deleteBranch
 );
 
 // Branch status toggle (Owner-only)

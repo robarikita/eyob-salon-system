@@ -9,14 +9,15 @@ router.use(authenticate);
 // 1. Audit Logs (Requires view_audit_logs; OWNER passes automatically)
 router.get("/audit-logs", requirePermission("view_audit_logs"), AdminController.getAuditLogs);
 
-// 2. Roles & Permissions Query (OWNER & BRANCH_ADMIN)
-router.get("/roles", authorize("OWNER", "BRANCH_ADMIN"), AdminController.getRoles);
-router.get("/permissions", authorize("OWNER", "BRANCH_ADMIN"), AdminController.getPermissions);
-router.get("/branch-admins", authorize("OWNER", "BRANCH_ADMIN"), AdminController.getBranchAdmins);
+// 2. Roles & Permissions Query (Strictly OWNER Only)
+router.get("/roles", authorize("OWNER"), AdminController.getRoles);
+router.get("/permissions", authorize("OWNER"), AdminController.getPermissions);
+router.get("/branch-admins", authorize("OWNER"), AdminController.getBranchAdmins);
 
-// 3. Role Mutations (OWNER Only)
+// 3. Role Mutations (Strictly OWNER Only)
 router.post("/roles", authorize("OWNER"), AdminController.createRole);
 router.patch("/roles/:id/permissions", authorize("OWNER"), AdminController.updateRolePermissions);
+router.patch("/branch-admins/:id/permissions", authorize("OWNER"), AdminController.updateAdminPermissions);
 router.post("/users/:id/reset-password", authorize("OWNER"), AdminController.resetUserPassword);
 
 export default router;
