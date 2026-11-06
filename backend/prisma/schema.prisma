@@ -75,6 +75,9 @@ model User {
   passwordResetToken   String?   @unique
   passwordResetExpires DateTime?
   tokenVersion         Int       @default(0)
+  preferredLang        String    @default("EN")
+  smsNotifications     Boolean   @default(true)
+  emailNotifications   Boolean   @default(true)
   
   // Relations
   branchId  String?

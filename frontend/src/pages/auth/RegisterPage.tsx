@@ -10,10 +10,11 @@ export const RegisterPage: React.FC = () => {
   const { t } = useLanguage();
   const navigate = useNavigate();
 
-  const [fullName, setFullName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [branch, setBranch] = useState('Bole');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,10 +24,6 @@ export const RegisterPage: React.FC = () => {
     setLoading(true);
 
     try {
-      const parts = fullName.trim().split(/\s+/);
-      const firstName = parts[0] || 'Patron';
-      const lastName = parts.slice(1).join(' ') || 'Client';
-
       // Format phone: if user didn't write +251, prepend it
       let cleanPhone = phone.trim().replace(/\s+/g, '');
       if (cleanPhone.startsWith('0')) {
@@ -37,11 +34,11 @@ export const RegisterPage: React.FC = () => {
       }
 
       const { user, tokens } = await authApi.register({
-        firstName,
-        lastName,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
         phone: cleanPhone,
+        email: email.trim() || undefined,
         password,
-        branch,
       });
 
       login(user, tokens.accessToken);
@@ -65,13 +62,19 @@ export const RegisterPage: React.FC = () => {
 
       {/* Main Content */}
       <main className="w-full flex-1 flex items-center justify-center px-4 py-10">
-        <div className="w-full max-w-md bg-[#181412] border border-[#D4AF37]/30 rounded-xl p-8 sm:p-10 shadow-2xl relative">
-          {/* Card Title */}
-          <div className="text-center mb-8">
+        <div className="w-full max-w-md bg-[#181412] border border-[#D4AF37]/30 rounded-2xl p-8 sm:p-10 shadow-2xl relative">
+          {/* Card Title & Global Access Badge */}
+          <div className="text-center mb-6">
             <h1 className="font-serif text-2xl sm:text-3xl text-[#D4AF37] font-medium tracking-tight mb-2">
               {t('auth.createAccount')}
             </h1>
-            <p className="text-neutral-400 text-xs sm:text-sm">Eyob Salon Patron Registration</p>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#D4AF37] text-xs font-medium tracking-wide mt-1">
+              <span className="material-symbols-outlined text-sm">verified</span>
+              <span>{t('profile.globalPass')}</span>
+            </div>
+            <p className="text-neutral-400 text-[11px] font-mono tracking-wider mt-1.5">
+              Bole · Kazanchis · CMC
+            </p>
           </div>
 
           {error && (
@@ -81,30 +84,50 @@ export const RegisterPage: React.FC = () => {
           )}
 
           {/* Registration Form */}
-          <form className="space-y-5" onSubmit={handleSubmit}>
-            {/* Field 1: Full Name */}
-            <div>
-              <label
-                className="block text-xs uppercase tracking-wider text-neutral-300 font-medium mb-2"
-                htmlFor="fullname"
-              >
-                {t('auth.fullName')}
-              </label>
-              <input
-                id="fullname"
-                type="text"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="e.g. Sara Haile"
-                required
-                className="w-full bg-[#0E0B09] border border-neutral-800 rounded-lg px-4 py-3 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
-              />
+          <form className="space-y-4" onSubmit={handleSubmit}>
+            {/* First & Last Name Grid */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label
+                  className="block text-xs uppercase tracking-wider text-neutral-300 font-medium mb-1.5"
+                  htmlFor="firstname"
+                >
+                  {t('profile.firstName')}
+                </label>
+                <input
+                  id="firstname"
+                  type="text"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  placeholder="Sara"
+                  required
+                  className="w-full bg-[#0E0B09] border border-neutral-800 rounded-lg px-3.5 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
+                />
+              </div>
+
+              <div>
+                <label
+                  className="block text-xs uppercase tracking-wider text-neutral-300 font-medium mb-1.5"
+                  htmlFor="lastname"
+                >
+                  {t('profile.lastName')}
+                </label>
+                <input
+                  id="lastname"
+                  type="text"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  placeholder="Tadesse"
+                  required
+                  className="w-full bg-[#0E0B09] border border-neutral-800 rounded-lg px-3.5 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
+                />
+              </div>
             </div>
 
-            {/* Field 2: Phone */}
+            {/* Field: Phone */}
             <div>
               <label
-                className="block text-xs uppercase tracking-wider text-neutral-300 font-medium mb-2"
+                className="block text-xs uppercase tracking-wider text-neutral-300 font-medium mb-1.5"
                 htmlFor="phone"
               >
                 {t('auth.phone')}
@@ -120,15 +143,34 @@ export const RegisterPage: React.FC = () => {
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="912 345 678"
                   required
-                  className="w-full bg-[#0E0B09] border border-neutral-800 rounded-lg pl-14 pr-4 py-3 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
+                  className="w-full bg-[#0E0B09] border border-neutral-800 rounded-lg pl-14 pr-4 py-2.5 text-sm font-mono text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
                 />
               </div>
             </div>
 
-            {/* Field 3: Password */}
+            {/* Field: Email (Optional) */}
             <div>
               <label
-                className="block text-xs uppercase tracking-wider text-neutral-300 font-medium mb-2"
+                className="block text-xs uppercase tracking-wider text-neutral-300 font-medium mb-1.5"
+                htmlFor="email"
+              >
+                {t('profile.email')}{' '}
+                <span className="text-[10px] text-neutral-500 normal-case">(Optional)</span>
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="sara@example.com"
+                className="w-full bg-[#0E0B09] border border-neutral-800 rounded-lg px-4 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
+              />
+            </div>
+
+            {/* Field: Password */}
+            <div>
+              <label
+                className="block text-xs uppercase tracking-wider text-neutral-300 font-medium mb-1.5"
                 htmlFor="password"
               >
                 {t('auth.password')}
@@ -141,48 +183,22 @@ export const RegisterPage: React.FC = () => {
                 placeholder="••••••••••••"
                 required
                 minLength={6}
-                className="w-full bg-[#0E0B09] border border-neutral-800 rounded-lg px-4 py-3 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
+                className="w-full bg-[#0E0B09] border border-neutral-800 rounded-lg px-4 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
               />
-            </div>
-
-            {/* Field 4: Branch */}
-            <div>
-              <label
-                className="block text-xs uppercase tracking-wider text-neutral-300 font-medium mb-2"
-                htmlFor="branch"
-              >
-                {t('auth.branch')}
-              </label>
-              <div className="relative">
-                <select
-                  id="branch"
-                  value={branch}
-                  onChange={(e) => setBranch(e.target.value)}
-                  required
-                  className="w-full bg-[#0E0B09] border border-neutral-800 rounded-lg px-4 py-3 text-sm text-neutral-100 appearance-none focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all cursor-pointer"
-                >
-                  <option value="Bole">Bole Flagship</option>
-                  <option value="Kazanchis">Kazanchis Executive</option>
-                  <option value="CMC">CMC Heights Sanctuary</option>
-                </select>
-                <span className="material-symbols-outlined absolute right-3.5 top-3.5 text-neutral-500 pointer-events-none text-lg">
-                  expand_more
-                </span>
-              </div>
             </div>
 
             {/* Submit Button */}
             <button
               type="submit"
               disabled={loading}
-              className="w-full mt-2 bg-[#D4AF37] hover:bg-[#e4c04a] disabled:opacity-50 text-black font-semibold text-sm tracking-wide py-3.5 px-4 rounded-lg transition-colors duration-200 cursor-pointer shadow-lg shadow-[#D4AF37]/10"
+              className="w-full mt-4 bg-[#D4AF37] hover:bg-[#e4c04a] disabled:opacity-50 text-black font-semibold text-xs uppercase tracking-widest py-3 px-4 rounded-xl transition-colors duration-200 cursor-pointer shadow-lg shadow-[#D4AF37]/10"
             >
               {loading ? '...' : t('auth.register')}
             </button>
           </form>
 
           {/* Login Link */}
-          <div className="mt-8 text-center">
+          <div className="mt-6 text-center">
             <Link
               to="/login"
               className="text-xs text-neutral-400 hover:text-[#D4AF37] transition-colors"
@@ -207,4 +223,3 @@ export const RegisterPage: React.FC = () => {
 };
 
 export default RegisterPage;
-

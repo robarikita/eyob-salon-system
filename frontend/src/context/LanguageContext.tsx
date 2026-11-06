@@ -68,6 +68,20 @@ const DICTIONARY: Record<string, TranslationEntry> = {
   'branch.delete': { en: 'Delete', am: 'አጥፋ', bilingual: 'Delete / አጥፋ' },
   'branch.statusToggle': { en: 'Status Toggle', am: 'ሁኔታ ቀይር', bilingual: 'Status Toggle / ሁኔታ ቀይር' },
   'branch.assignAdmin': { en: 'Assign Admin', am: 'አስተዳዳሪ መድብ', bilingual: 'Assign Admin / አስተዳዳሪ መድብ' },
+
+  // Customer Profile & Global Access
+  'profile.title': { en: 'Personal Dossier', am: 'የግል መገለጫ', bilingual: 'Personal Dossier / የግል መገለጫ' },
+  'profile.contactPrefs': { en: 'Ritual Preferences', am: 'የመልእክት ምርጫዎች', bilingual: 'Ritual Preferences / የመልእክት ምርጫዎች' },
+  'profile.globalPass': { en: 'Global Sanctuary Pass', am: 'ዓለም አቀፍ አባል', bilingual: 'Global Sanctuary Pass / ዓለም አቀፍ አባል' },
+  'profile.smsAlerts': { en: 'SMS Alerts', am: 'የኤስኤምኤስ መልዕክት', bilingual: 'SMS Alerts / የኤስኤምኤስ መልዕክት' },
+  'profile.emailAlerts': { en: 'Email Confirmations', am: 'የኢሜይል ማረጋገጫ', bilingual: 'Email Confirmations / የኢሜይል ማረጋገጫ' },
+  'profile.visits': { en: 'Sanctuary Visits', am: 'ጉብኝቶች', bilingual: 'Sanctuary Visits / ጉብኝቶች' },
+  'profile.firstName': { en: 'First Name', am: 'ስም', bilingual: 'First Name / ስም' },
+  'profile.lastName': { en: 'Last Name', am: 'የአባት ስም', bilingual: 'Last Name / የአባት ስም' },
+  'profile.email': { en: 'Email', am: 'ኢሜይል', bilingual: 'Email / ኢሜይል' },
+  'profile.completed': { en: 'Completed', am: 'የተጠናቀቁ', bilingual: 'Completed / የተጠናቀቁ' },
+  'profile.active': { en: 'Active', am: 'ንቁ', bilingual: 'Active / ንቁ' },
+  'profile.total': { en: 'Total Visits', am: 'ጠቅላላ ጉብኝቶች', bilingual: 'Total Visits / ጠቅላላ ጉብኝቶች' },
 };
 
 interface LanguageContextType {

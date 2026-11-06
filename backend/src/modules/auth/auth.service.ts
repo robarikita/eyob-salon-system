@@ -2,7 +2,7 @@ import crypto from "crypto";
 import prisma from "../../utils/prisma";
 import { hashPassword, comparePassword } from "../../utils/password";
 import { generateTokens, verifyToken, TokenPayload } from "../../utils/jwt";
-import { ValidationError, UnauthorizedError } from "../../errors/AppError";
+import { ValidationError, UnauthorizedError, ConflictError } from "../../errors/AppError";
 import { z } from "zod";
 import { registerSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } from "./auth.schema";
 
@@ -14,23 +14,34 @@ type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 export class AuthService {
   static async register(data: RegisterInput) {
     const existingUser = await prisma.user.findUnique({
-      where: { phone: data.phone },
+      where: { phone: data.phone.trim() },
     });
 
     if (existingUser) {
-      throw new ValidationError("Phone number is already registered");
+      throw new ConflictError("Phone number is already registered");
+    }
+
+    if (data.email && data.email.trim() !== "") {
+      const normalizedEmail = data.email.toLowerCase().trim();
+      const existingEmail = await prisma.user.findFirst({
+        where: { email: normalizedEmail },
+      });
+      if (existingEmail) {
+        throw new ConflictError("Email is already registered");
+      }
     }
 
     const hashedPassword = await hashPassword(data.password);
 
     const user = await prisma.user.create({
       data: {
-        firstName: data.firstName,
-        lastName: data.lastName,
-        email: data.email,
-        phone: data.phone,
+        firstName: data.firstName.trim(),
+        lastName: data.lastName.trim(),
+        email: data.email && data.email.trim() !== "" ? data.email.toLowerCase().trim() : null,
+        phone: data.phone.trim(),
         password: hashedPassword,
         role: "CUSTOMER", // Default role for open registration
+        branchId: null,   // Explicitly null confirming global cross-branch eligibility
       },
     });
 
