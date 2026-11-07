@@ -29,7 +29,7 @@ export class ServiceRitualService {
       branchId?: string;
       status?: string; // "active" | "inactive" | "all"
     },
-    currentUser: CurrentUser
+    currentUser?: CurrentUser
   ) {
     const where: any = {};
 
@@ -88,7 +88,7 @@ export class ServiceRitualService {
 
     // Determine target branch context for effective pricing
     let targetBranchId = filter.branchId;
-    if (currentUser.role === "BRANCH_ADMIN") {
+    if (currentUser?.role === "BRANCH_ADMIN") {
       targetBranchId = currentUser.branchId || undefined;
     } else if (targetBranchId === "all") {
       targetBranchId = undefined;
@@ -188,7 +188,7 @@ export class ServiceRitualService {
   /**
    * Get ritual specification dossier by ID or Code
    */
-  static async getServiceById(idOrCode: string, currentUser: CurrentUser, branchContextId?: string) {
+  static async getServiceById(idOrCode: string, currentUser?: CurrentUser, branchContextId?: string) {
     const service = await prisma.service.findFirst({
       where: {
         OR: [{ id: idOrCode }, { code: idOrCode }],
@@ -219,7 +219,7 @@ export class ServiceRitualService {
 
     // Determine target branch context
     let targetBranchId = branchContextId;
-    if (currentUser.role === "BRANCH_ADMIN") {
+    if (currentUser?.role === "BRANCH_ADMIN") {
       targetBranchId = currentUser.branchId || undefined;
     }
 

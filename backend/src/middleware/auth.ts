@@ -39,6 +39,36 @@ export const authenticate = async (req: Request, _res: Response, next: NextFunct
   }
 };
 
+export const optionalAuthenticate = async (req: Request, _res: Response, next: NextFunction) => {
+  try {
+    let token: string | undefined;
+
+    if (req.headers.authorization?.startsWith("Bearer ")) {
+      token = req.headers.authorization.split(" ")[1];
+    } else if (req.cookies?.accessToken) {
+      token = req.cookies.accessToken;
+    }
+
+    if (!token) {
+      return next();
+    }
+
+    const payload = verifyToken(token);
+    const user = await prisma.user.findUnique({
+      where: { id: payload.id },
+      select: { tokenVersion: true },
+    });
+
+    if (user && user.tokenVersion === (payload.tokenVersion ?? 0)) {
+      req.user = payload;
+    }
+    next();
+  } catch {
+    // If token invalid, proceed unauthenticated as guest
+    next();
+  }
+};
+
 export const authorize = (...allowedRoles: UserRole[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {

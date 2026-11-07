@@ -22,6 +22,11 @@ export const LoginPage: React.FC = () => {
 
   const from = (location.state as any)?.from?.pathname;
 
+  const searchParams = new URLSearchParams(location.search);
+  const redirectParam = searchParams.get('redirect');
+  const messageParam = searchParams.get('message');
+  const isLoginRequired = messageParam === 'login_required';
+
   const roleHints: Record<RoleTab, { placeholder: string; helper: string; defaultDestination: string }> = {
     CUSTOMER: {
       placeholder: '+251 9... or patron@eyobsalon.com',
@@ -46,8 +51,17 @@ export const LoginPage: React.FC = () => {
   };
 
   const redirectAfterLogin = (actualRole: string) => {
+    if (redirectParam) {
+      navigate(redirectParam, { replace: true });
+      return;
+    }
     if (from) {
       navigate(from, { replace: true });
+      return;
+    }
+    const pending = sessionStorage.getItem('pending_booking');
+    if (pending && actualRole === 'CUSTOMER') {
+      navigate('/book', { replace: true });
       return;
     }
     if (actualRole === 'EMPLOYEE') {
@@ -106,6 +120,14 @@ export const LoginPage: React.FC = () => {
               Enter your credentials to access your dashboard
             </p>
           </div>
+
+          {/* Guest Booking Guard Notice */}
+          {isLoginRequired && (
+            <div className="mb-6 p-3.5 rounded-lg bg-[#D4AF37]/15 border border-[#D4AF37]/40 text-[#D4AF37] text-xs font-medium text-center flex items-center justify-center gap-2 shadow-sm">
+              <span className="material-symbols-outlined text-base">lock</span>
+              <span>{t('book.loginRequired')}</span>
+            </div>
+          )}
 
           {/* Role Selector Pill Tabs */}
           <div className="mb-6">
@@ -241,7 +263,7 @@ export const LoginPage: React.FC = () => {
           {/* Bottom Register Link */}
           <div className="mt-8 text-center">
             <Link
-              to="/register"
+              to={redirectParam ? `/register?redirect=${encodeURIComponent(redirectParam)}` : "/register"}
               className="text-xs text-[#A3998F] hover:text-[#D4AF37] transition-colors tracking-wide"
             >
               Don't have an account?{' '}

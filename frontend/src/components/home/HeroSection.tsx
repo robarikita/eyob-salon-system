@@ -1,24 +1,16 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 
 interface HeroSectionProps {
   onBookClick?: () => void;
 }
 
 export const HeroSection: React.FC<HeroSectionProps> = ({ onBookClick }) => {
-  const handleBookClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (onBookClick) {
-      onBookClick();
-    } else {
-      const el = document.querySelector('#book');
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth' });
-      }
-    }
-  };
-
   const handleLearnMore = (e: React.MouseEvent) => {
     e.preventDefault();
+    if (onBookClick) {
+      // Keep onBookClick prop support
+    }
     const el = document.querySelector('#services');
     if (el) {
       el.scrollIntoView({ behavior: 'smooth' });
@@ -82,16 +74,15 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onBookClick }) => {
 
             {/* Primary & Secondary CTA Buttons */}
             <div className="flex flex-wrap items-center gap-4 pt-3">
-              <a
-                href="#book"
-                onClick={handleBookClick}
+              <Link
+                to="/book"
                 className="inline-flex items-center gap-2.5 px-7 py-3.5 rounded-full text-stone-950 font-semibold text-sm sm:text-base gold-gradient-btn tracking-normal"
               >
                 <span>Book Appointment</span>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                   <path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-              </a>
+              </Link>
               <a
                 href="#services"
                 onClick={handleLearnMore}

@@ -10,3 +10,4 @@ router.get("/me", CustomerController.getMe);
 router.patch("/me", CustomerController.updateMe);
 
 export default router;
+

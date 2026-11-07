@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 
 interface ConsultationFormProps {
   initialService?: string;
@@ -171,7 +172,7 @@ export const ConsultationForm: React.FC<ConsultationFormProps> = ({
               </select>
             </div>
 
-            <div className="sm:col-span-2 mt-3">
+            <div className="sm:col-span-2 mt-3 space-y-3">
               <button
                 type="submit"
                 disabled={isSubmitting}
@@ -182,6 +183,15 @@ export const ConsultationForm: React.FC<ConsultationFormProps> = ({
                   <path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
+              <div className="text-center pt-2">
+                <Link
+                  to="/book"
+                  className="text-xs font-semibold uppercase tracking-wider text-amber-800 hover:text-amber-950 inline-flex items-center gap-1.5 transition-colors"
+                >
+                  <span>Launch Live Sanctuary Booking Wizard</span>
+                  <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                </Link>
+              </div>
             </div>
           </form>
         )}

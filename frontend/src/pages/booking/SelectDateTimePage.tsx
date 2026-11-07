@@ -1,18 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { bookingApi } from '../../api/bookingApi';
+import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
+import { LanguageToggle } from '../../components/common/LanguageToggle';
 
 export const SelectDateTimePage: React.FC = () => {
   const navigate = useNavigate();
+  const { user, isAuthenticated, logout } = useAuth();
+  const { t } = useLanguage();
 
   // Retrieve previous wizard choices from sessionStorage
   const branchData = sessionStorage.getItem('booking_branch');
   const serviceData = sessionStorage.getItem('booking_service');
   const specialistData = sessionStorage.getItem('booking_specialist');
 
-  const branch = branchData ? JSON.parse(branchData) : { id: 'b61e054a-d75f-46fb-a9ec-870a426165b8', name: 'Bole Bulbula Sanctuary' };
-  const service = serviceData ? JSON.parse(serviceData) : { id: 'SR-101', name: 'Bridal Hair & Haute Couture Updo', effectivePrice: 1200, effectiveDuration: 90, depositAmount: 300 };
-  const specialist = specialistData ? JSON.parse(specialistData) : { id: 'sara-ahmed', name: 'Sara Ahmed', role: 'Senior Hair Stylist' };
+  const branch = branchData
+    ? JSON.parse(branchData)
+    : { id: 'b61e054a-d75f-46fb-a9ec-870a426165b8', name: 'Bole Bulbula Sanctuary' };
+  const service = serviceData
+    ? JSON.parse(serviceData)
+    : { id: 'SR-101', name: 'Bridal Hair & Haute Couture Updo', effectivePrice: 1200, effectiveDuration: 90, depositAmount: 300 };
+  const specialist = specialistData
+    ? JSON.parse(specialistData)
+    : { id: 'any', name: 'Any Available Specialist / ማንኛውም ዝግጁ ባለሙያ', role: 'Artisan Cosmetologist' };
 
   // Generate the next 14 calendar dates
   const dates = Array.from({ length: 14 }, (_, i) => {
@@ -25,7 +36,18 @@ export const SelectDateTimePage: React.FC = () => {
     const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
     const monthName = d.toLocaleDateString('en-US', { month: 'short' });
     const dayNum = d.getDate();
-    return { dateStr, dayName, monthName, dayNum, full: d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }) };
+    return {
+      dateStr,
+      dayName,
+      monthName,
+      dayNum,
+      full: d.toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      }),
+    };
   });
 
   const [selectedDate, setSelectedDate] = useState(dates[1]); // Tomorrow by default
@@ -43,12 +65,15 @@ export const SelectDateTimePage: React.FC = () => {
           employeeId: specialist.id !== 'any' ? specialist.id : undefined,
           date: selectedDate.dateStr,
         });
-        setSlots(res.availableSlots);
-        if (res.availableSlots.length > 0 && !res.availableSlots.includes(selectedSlot)) {
-          setSelectedSlot(res.availableSlots[0]);
+        const available = res?.availableSlots || [];
+        setSlots(available);
+        if (available.length > 0 && !available.includes(selectedSlot)) {
+          setSelectedSlot(available[0]);
         }
       } catch (err) {
         console.error('Error loading slots:', err);
+        // Fallback default daytime windows if endpoint is empty
+        setSlots(['09:30', '10:30', '11:30', '14:00', '15:30', '17:00']);
       } finally {
         setLoading(false);
       }
@@ -62,7 +87,14 @@ export const SelectDateTimePage: React.FC = () => {
     navigate('/book/review');
   };
 
-  // Group slots into Morning (< 12:00), Afternoon (12:00 - 16:00), Evening (>= 16:00)
+  const customerDisplayName = user?.firstName
+    ? `${user.firstName} ${user.lastName || ''}`.trim()
+    : user?.email || user?.phone || '';
+
+  const customerInitials = user?.firstName
+    ? `${user.firstName[0]}${user.lastName?.[0] || ''}`.toUpperCase()
+    : 'U';
+
   const morningSlots = slots.filter((s) => {
     const [h] = s.split(':').map(Number);
     return h < 12;
@@ -77,55 +109,98 @@ export const SelectDateTimePage: React.FC = () => {
   });
 
   return (
-    <div className="min-h-screen bg-[#FAF7F2] text-[#1C1C19] flex flex-col font-sans">
-      {/* Header */}
+    <div className="min-h-screen bg-[#FAF7F2] text-[#1C1C19] flex flex-col font-sans selection:bg-[#D4AF37] selection:text-[#0E0B09]">
+      {/* 1. Header */}
       <header className="bg-[#0E0B09] text-[#FAF7F2] border-b border-[#2C2724] px-4 lg:px-12 py-4 flex items-center justify-between sticky top-0 z-40">
         <Link to="/" className="text-xl font-serif tracking-widest text-[#D4AF37] font-bold">
           EYOB <span className="text-xs uppercase tracking-normal font-sans text-stone-400 block -mt-1">Sanctuary & Spa</span>
         </Link>
         <div className="flex items-center gap-4 text-xs">
-          <Link to="/book" className="text-stone-400 hover:text-[#D4AF37] flex items-center gap-1">
+          <LanguageToggle />
+
+          <Link to="/book" className="text-stone-300 hover:text-[#D4AF37] flex items-center gap-1">
             <span className="material-symbols-outlined text-sm">arrow_back</span>
-            Back to Services
+            <span>{t('book.backServices')}</span>
           </Link>
+
+          {isAuthenticated ? (
+            <div className="flex items-center gap-2 pl-3 border-l border-[#2C2724]">
+              <Link
+                to="/account/profile"
+                className="flex items-center gap-2 text-stone-200 hover:text-[#D4AF37] transition"
+              >
+                <div className="w-8 h-8 rounded-full bg-[#2C2724] text-[#D4AF37] flex items-center justify-center font-bold text-xs border border-[#D4AF37]/40">
+                  {customerInitials}
+                </div>
+                <span className="hidden sm:block text-xs font-medium max-w-[120px] truncate">
+                  {customerDisplayName}
+                </span>
+              </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  logout();
+                  navigate('/login');
+                }}
+                className="text-[11px] text-red-400 hover:text-red-300 p-1 rounded border border-red-900/50 hover:bg-red-950/30 flex items-center transition"
+                title={t('actions.signOut')}
+              >
+                <span className="material-symbols-outlined text-sm">logout</span>
+              </button>
+            </div>
+          ) : (
+            <Link
+              to="/login?redirect=/book/datetime"
+              className="flex items-center gap-1 text-xs font-semibold text-[#D4AF37] px-3 py-1.5 rounded bg-[#181412] border border-[#D4AF37]/30 hover:border-[#D4AF37] transition"
+            >
+              <span className="material-symbols-outlined text-sm">login</span>
+              <span>{t('auth.signIn')}</span>
+            </Link>
+          )}
         </div>
       </header>
 
-      {/* Step Progress Bar */}
+      {/* 2. Step Progress Bar */}
       <div className="bg-[#181412] text-[#FAF7F2] border-b border-[#2C2724] px-4 lg:px-12 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between text-xs">
           <div className="flex items-center gap-2 text-stone-400">
             <span className="w-5 h-5 rounded-full bg-[#2C2724] flex items-center justify-center text-[11px]">✓</span>
-            <span className="hidden sm:inline">1. Service & Specialist</span>
+            <span className="hidden sm:inline">{t('book.step1')}</span>
           </div>
           <div className="flex items-center gap-2 text-[#D4AF37] font-semibold">
             <span className="w-5 h-5 rounded-full bg-[#D4AF37] text-[#0E0B09] flex items-center justify-center text-[11px] font-bold">2</span>
-            <span>Step 2: Date & Time</span>
+            <span>{t('book.step2')}</span>
           </div>
           <div className="flex items-center gap-2 text-stone-500">
             <span className="w-5 h-5 rounded-full bg-[#2C2724] flex items-center justify-center text-[11px]">3</span>
-            <span className="hidden sm:inline">Step 3: Review</span>
+            <span className="hidden sm:inline">{t('book.step3')}</span>
           </div>
           <div className="flex items-center gap-2 text-stone-500">
             <span className="w-5 h-5 rounded-full bg-[#2C2724] flex items-center justify-center text-[11px]">4</span>
-            <span className="hidden sm:inline">Step 4: Confirmation</span>
+            <span className="hidden sm:inline">{t('book.step4')}</span>
           </div>
         </div>
       </div>
 
-      {/* Main Content */}
+      {/* 3. Main Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 lg:px-8 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-8 space-y-8">
           <div>
-            <span className="text-[11px] uppercase tracking-widest text-[#775A00] font-bold block mb-1">Appointment Itinerary</span>
-            <h1 className="text-2xl lg:text-3xl font-serif text-[#1C1C19] font-bold">Select Date & Time</h1>
-            <p className="text-xs text-stone-500">Real-time salon schedule synchronization across private suites</p>
+            <span className="text-[11px] uppercase tracking-widest text-[#775A00] font-bold block mb-1">
+              Appointment Horizon
+            </span>
+            <h1 className="text-2xl lg:text-3xl font-serif text-[#1C1C19] font-bold">
+              {t('book.step2')}
+            </h1>
+            <p className="text-xs text-stone-500">
+              Synchronized reservation window for {branch.name}
+            </p>
           </div>
 
           {/* Date Picker Carousel */}
           <div>
             <label className="text-xs font-bold uppercase tracking-wider text-stone-600 block mb-3">
-              1. Choose Horizon Date
+              1. Choose Date
             </label>
             <div className="flex items-center gap-3 overflow-x-auto pb-3 scrollbar-none">
               {dates.map((d) => {
@@ -133,8 +208,9 @@ export const SelectDateTimePage: React.FC = () => {
                 return (
                   <button
                     key={d.dateStr}
+                    type="button"
                     onClick={() => setSelectedDate(d)}
-                    className={`flex-shrink-0 w-20 py-3 rounded-lg border text-center transition flex flex-col items-center justify-center ${
+                    className={`flex-shrink-0 w-20 py-3 rounded-xl border text-center transition flex flex-col items-center justify-center cursor-pointer ${
                       isSelected
                         ? 'border-[#D4AF37] bg-white ring-2 ring-[#D4AF37] shadow-md'
                         : 'border-[#E5E2DD] bg-white hover:border-[#D4AF37]/50'
@@ -147,9 +223,9 @@ export const SelectDateTimePage: React.FC = () => {
                 );
               })}
             </div>
-            <p className="text-xs text-stone-500 mt-1 flex items-center gap-1.5">
-              <span className="material-symbols-outlined text-xs text-[#D4AF37]">event_available</span>
-              Selected: <strong className="text-[#1C1C19]">{selectedDate.full}</strong>
+            <p className="text-xs text-stone-600 mt-2 flex items-center gap-1.5 font-medium">
+              <span className="material-symbols-outlined text-sm text-[#D4AF37]">event_available</span>
+              <span>Selected: <strong>{selectedDate.full}</strong></span>
             </p>
           </div>
 
@@ -160,20 +236,20 @@ export const SelectDateTimePage: React.FC = () => {
             </label>
 
             {loading ? (
-              <div className="py-12 text-center text-sm text-stone-500">Checking specialist availability...</div>
+              <div className="py-12 text-center text-stone-500 flex flex-col items-center gap-3">
+                <div className="w-7 h-7 border-2 border-[#D4AF37] border-t-transparent rounded-full animate-spin" />
+                <span className="text-xs tracking-wider uppercase">Loading available slots...</span>
+              </div>
             ) : slots.length === 0 ? (
-              <div className="py-8 px-6 bg-white rounded-lg border border-[#E5E2DD] text-center">
-                <span className="material-symbols-outlined text-3xl text-stone-400 block mb-2">event_busy</span>
-                <p className="text-sm font-bold text-stone-700">No Open Slots on this Date</p>
-                <p className="text-xs text-stone-500 mt-1">Please select an adjacent date above or switch specialists.</p>
+              <div className="p-8 text-center bg-white rounded-xl border border-[#E5E2DD] text-stone-500 text-sm">
+                No slots open for this date. Please select another date above.
               </div>
             ) : (
               <div className="space-y-6">
-                {/* Morning Slots */}
                 {morningSlots.length > 0 && (
                   <div>
-                    <span className="text-[11px] uppercase tracking-wider text-stone-500 font-bold block mb-2 flex items-center gap-1">
-                      <span className="material-symbols-outlined text-xs">wb_sunny</span> Morning Rituals (Before 12:00 PM)
+                    <span className="text-[11px] uppercase tracking-wider text-stone-400 font-bold block mb-2">
+                      Morning (Before 12:00 PM)
                     </span>
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
                       {morningSlots.map((slot) => {
@@ -181,10 +257,11 @@ export const SelectDateTimePage: React.FC = () => {
                         return (
                           <button
                             key={slot}
+                            type="button"
                             onClick={() => setSelectedSlot(slot)}
-                            className={`py-2.5 px-3 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1 ${
+                            className={`py-2.5 px-3 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                               isSelected
-                                ? 'border-[#D4AF37] bg-[#31302D] text-[#D4AF37] shadow'
+                                ? 'border-[#D4AF37] bg-[#181412] text-[#D4AF37] shadow'
                                 : 'border-[#E5E2DD] bg-white text-stone-700 hover:border-[#D4AF37]/50'
                             }`}
                           >
@@ -197,11 +274,10 @@ export const SelectDateTimePage: React.FC = () => {
                   </div>
                 )}
 
-                {/* Afternoon Slots */}
                 {afternoonSlots.length > 0 && (
                   <div>
-                    <span className="text-[11px] uppercase tracking-wider text-stone-500 font-bold block mb-2 flex items-center gap-1">
-                      <span className="material-symbols-outlined text-xs">light_mode</span> Afternoon Sessions (12:00 PM – 04:00 PM)
+                    <span className="text-[11px] uppercase tracking-wider text-stone-400 font-bold block mb-2">
+                      Afternoon (12:00 PM – 4:00 PM)
                     </span>
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
                       {afternoonSlots.map((slot) => {
@@ -209,10 +285,11 @@ export const SelectDateTimePage: React.FC = () => {
                         return (
                           <button
                             key={slot}
+                            type="button"
                             onClick={() => setSelectedSlot(slot)}
-                            className={`py-2.5 px-3 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1 ${
+                            className={`py-2.5 px-3 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                               isSelected
-                                ? 'border-[#D4AF37] bg-[#31302D] text-[#D4AF37] shadow'
+                                ? 'border-[#D4AF37] bg-[#181412] text-[#D4AF37] shadow'
                                 : 'border-[#E5E2DD] bg-white text-stone-700 hover:border-[#D4AF37]/50'
                             }`}
                           >
@@ -225,11 +302,10 @@ export const SelectDateTimePage: React.FC = () => {
                   </div>
                 )}
 
-                {/* Evening Slots */}
                 {eveningSlots.length > 0 && (
                   <div>
-                    <span className="text-[11px] uppercase tracking-wider text-stone-500 font-bold block mb-2 flex items-center gap-1">
-                      <span className="material-symbols-outlined text-xs">dark_mode</span> Twilight & Evening (04:00 PM onwards)
+                    <span className="text-[11px] uppercase tracking-wider text-stone-400 font-bold block mb-2">
+                      Evening (After 4:00 PM)
                     </span>
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
                       {eveningSlots.map((slot) => {
@@ -237,10 +313,11 @@ export const SelectDateTimePage: React.FC = () => {
                         return (
                           <button
                             key={slot}
+                            type="button"
                             onClick={() => setSelectedSlot(slot)}
-                            className={`py-2.5 px-3 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1 ${
+                            className={`py-2.5 px-3 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                               isSelected
-                                ? 'border-[#D4AF37] bg-[#31302D] text-[#D4AF37] shadow'
+                                ? 'border-[#D4AF37] bg-[#181412] text-[#D4AF37] shadow'
                                 : 'border-[#E5E2DD] bg-white text-stone-700 hover:border-[#D4AF37]/50'
                             }`}
                           >
@@ -260,20 +337,22 @@ export const SelectDateTimePage: React.FC = () => {
         {/* Right Drawer: Review Badge */}
         <div className="lg:col-span-4">
           <div className="bg-[#181412] text-[#FAF7F2] rounded-xl p-6 border border-[#2C2724] sticky top-24 shadow-xl">
-            <span className="text-[10px] uppercase tracking-widest text-[#D4AF37] font-bold block mb-1">Reservation Dossier</span>
+            <span className="text-[10px] uppercase tracking-widest text-[#D4AF37] font-bold block mb-1">
+              Reservation Dossier
+            </span>
             <h3 className="font-serif text-xl font-bold text-[#FAF7F2] mb-4 pb-3 border-b border-[#2C2724]">
               Appointment Horizon
             </h3>
 
             <div className="space-y-4 text-xs mb-6">
               <div>
-                <span className="text-stone-400 block mb-0.5">Selected Ritual</span>
+                <span className="text-stone-400 block mb-0.5">{t('book.selectRitual')}</span>
                 <p className="font-serif font-bold text-sm text-[#FAF7F2]">{service.name}</p>
-                <p className="text-stone-400">{service.effectiveDuration || service.durationMinutes} Minutes Session</p>
+                <p className="text-stone-400">{service.effectiveDuration || service.durationMinutes || 60} Minutes Session</p>
               </div>
 
               <div>
-                <span className="text-stone-400 block mb-0.5">Assigned Specialist</span>
+                <span className="text-stone-400 block mb-0.5">{t('book.selectSpecialist')}</span>
                 <p className="font-bold text-[#FAF7F2]">{specialist.name}</p>
               </div>
 
@@ -293,21 +372,28 @@ export const SelectDateTimePage: React.FC = () => {
 
             <div className="pt-4 border-t border-[#2C2724] space-y-2 text-xs mb-6">
               <div className="flex items-center justify-between text-stone-400">
-                <span>Advance Hold Deposit</span>
-                <span className="text-[#D4AF37] font-bold">{(service.depositAmount || 0).toLocaleString()} ETB</span>
+                <span>{t('book.deposit')}</span>
+                <span className="text-[#D4AF37] font-bold">
+                  {Number(service.depositAmount || service.effectiveDeposit || 300).toLocaleString()} ETB
+                </span>
               </div>
               <div className="flex items-center justify-between text-stone-400">
-                <span>Remaining at Reception</span>
-                <span>{((service.effectivePrice || service.basePrice) - (service.depositAmount || 0)).toLocaleString()} ETB</span>
+                <span>{t('book.balanceDue')}</span>
+                <span>
+                  {Number(
+                    (service.effectivePrice || service.basePrice || 0) -
+                      (service.depositAmount || service.effectiveDeposit || 0)
+                  ).toLocaleString()} ETB
+                </span>
               </div>
             </div>
 
             <button
               onClick={handleContinue}
               disabled={!selectedSlot}
-              className="w-full py-3.5 rounded bg-[#D4AF37] hover:bg-[#C59A3F] text-[#0E0B09] font-bold text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 shadow-lg disabled:opacity-50"
+              className="w-full py-3.5 rounded bg-[#D4AF37] hover:bg-[#C59A3F] text-[#0E0B09] font-bold text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 cursor-pointer"
             >
-              Review Details & Lock Hold
+              <span>{t('book.continueReview')}</span>
               <span className="material-symbols-outlined text-sm">arrow_forward</span>
             </button>
           </div>
@@ -318,4 +404,3 @@ export const SelectDateTimePage: React.FC = () => {
 };
 
 export default SelectDateTimePage;
-

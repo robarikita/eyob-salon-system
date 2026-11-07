@@ -10,7 +10,6 @@ import { UnauthorizedError } from "../../errors/AppError";
 export class ServiceController {
   static async listServices(req: Request, res: Response, next: NextFunction) {
     try {
-      if (!req.user) throw new UnauthorizedError();
       const { search, category, branchId, status } = req.query;
 
       const services = await ServiceRitualService.listServices(
@@ -35,7 +34,6 @@ export class ServiceController {
 
   static async getServiceById(req: Request, res: Response, next: NextFunction) {
     try {
-      if (!req.user) throw new UnauthorizedError();
       const branchId = req.query.branchId as string | undefined;
       const service = await ServiceRitualService.getServiceById(
         req.params.id as string,

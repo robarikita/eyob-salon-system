@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 
 interface BranchLocation {
   id: string;
@@ -37,14 +38,13 @@ export const locationsData: BranchLocation[] = [
 ];
 
 export const LocationsSection: React.FC<LocationsSectionProps> = ({ onSelectBranch }) => {
-  const handleBranchClick = (branchName: string) => {
+  const navigate = useNavigate();
+
+  const handleBranchClick = (branchId: string, branchName: string) => {
     if (onSelectBranch) {
       onSelectBranch(branchName);
     }
-    const el = document.querySelector('#book');
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
-    }
+    navigate(`/book?branch=${encodeURIComponent(branchId)}`);
   };
 
   return (
@@ -88,8 +88,8 @@ export const LocationsSection: React.FC<LocationsSectionProps> = ({ onSelectBran
               </div>
               <button
                 type="button"
-                onClick={() => handleBranchClick(branch.name)}
-                className="text-xs font-bold uppercase tracking-wider text-amber-800 hover:text-amber-900 flex items-center gap-1.5 pt-3 border-t border-stone-200/80 transition-colors text-left"
+                onClick={() => handleBranchClick(branch.id, branch.name)}
+                className="text-xs font-bold uppercase tracking-wider text-amber-800 hover:text-amber-900 flex items-center gap-1.5 pt-3 border-t border-stone-200/80 transition-colors text-left cursor-pointer"
               >
                 <span>BOOK THIS BRANCH</span>
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">

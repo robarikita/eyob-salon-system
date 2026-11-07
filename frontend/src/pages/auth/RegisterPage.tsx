@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { LanguageToggle } from '../../components/common/LanguageToggle';
@@ -9,6 +9,7 @@ export const RegisterPage: React.FC = () => {
   const { login } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -42,7 +43,16 @@ export const RegisterPage: React.FC = () => {
       });
 
       login(user, tokens.accessToken);
-      navigate('/my-bookings', { replace: true });
+      const searchParams = new URLSearchParams(location.search);
+      const redirectParam = searchParams.get('redirect');
+      const pending = sessionStorage.getItem('pending_booking');
+      if (redirectParam) {
+        navigate(redirectParam, { replace: true });
+      } else if (pending) {
+        navigate('/book', { replace: true });
+      } else {
+        navigate('/my-bookings', { replace: true });
+      }
     } catch (err: any) {
       setError(err.message || 'Registration failed. Please verify your phone number and password.');
     } finally {
@@ -99,7 +109,7 @@ export const RegisterPage: React.FC = () => {
                   type="text"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
-                  placeholder="Sara"
+                  placeholder="First Name"
                   required
                   className="w-full bg-[#0E0B09] border border-neutral-800 rounded-lg px-3.5 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
                 />
@@ -117,7 +127,7 @@ export const RegisterPage: React.FC = () => {
                   type="text"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
-                  placeholder="Tadesse"
+                  placeholder="Last Name"
                   required
                   className="w-full bg-[#0E0B09] border border-neutral-800 rounded-lg px-3.5 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
                 />

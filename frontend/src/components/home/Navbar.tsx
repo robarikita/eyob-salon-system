@@ -25,6 +25,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onBookClick }) => {
 
   const handleNavClick = (href: string) => {
     setMobileMenuOpen(false);
+    if (onBookClick && href === '#book') {
+      onBookClick();
+      return;
+    }
     if (href === '#') {
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
@@ -32,19 +36,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onBookClick }) => {
     const element = document.querySelector(href);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
-
-  const handleBookClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setMobileMenuOpen(false);
-    if (onBookClick) {
-      onBookClick();
-    } else {
-      const el = document.querySelector('#book');
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth' });
-      }
     }
   };
 
@@ -174,7 +165,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onBookClick }) => {
                 className="text-stone-200 hover:text-brand-gold text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#181412] border border-brand-gold/20 transition-colors"
               >
                 <span className="material-symbols-outlined text-[17px] text-brand-gold">account_circle</span>
-                <span className="max-w-[110px] truncate">{user?.firstName || 'Patron'}</span>
+                <span className="max-w-[140px] truncate">
+                  {user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user?.email || user?.phone || ''}
+                </span>
               </Link>
               <button
                 type="button"
@@ -200,13 +193,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onBookClick }) => {
           )}
 
           {/* Desktop CTA Button */}
-          <a
-            href="#book"
-            onClick={handleBookClick}
+          <Link
+            to="/book"
             className="hidden sm:inline-flex items-center justify-center px-6 py-2.5 rounded-full text-xs sm:text-sm font-semibold text-stone-950 gold-gradient-btn tracking-wide"
           >
             Book Appointment
-          </a>
+          </Link>
 
           {/* Mobile Hamburger Button */}
           <button
@@ -274,7 +266,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onBookClick }) => {
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   <span className="material-symbols-outlined text-[18px] text-brand-gold">account_circle</span>
-                  <span>{user?.firstName || 'Patron'}</span>
+                  <span>{user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user?.email || user?.phone || ''}</span>
                 </Link>
                 <button
                   type="button"
@@ -291,13 +283,13 @@ export const Navbar: React.FC<NavbarProps> = ({ onBookClick }) => {
               </div>
             )}
 
-            <a
-              href="#book"
-              onClick={handleBookClick}
+            <Link
+              to="/book"
+              onClick={() => setMobileMenuOpen(false)}
               className="w-full inline-flex items-center justify-center px-6 py-3 rounded-full text-sm font-semibold text-stone-950 gold-gradient-btn tracking-wide"
             >
               Book Appointment
-            </a>
+            </Link>
           </div>
         </div>
       )}

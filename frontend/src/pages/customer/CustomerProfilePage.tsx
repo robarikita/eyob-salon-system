@@ -59,8 +59,16 @@ export const CustomerProfilePage: React.FC = () => {
     };
   }, []);
 
-  const initials = `${(firstName?.[0] || user?.firstName?.[0] || 'E')}${(lastName?.[0] || user?.lastName?.[0] || 'S')}`.toUpperCase();
-  const fullName = `${firstName || user?.firstName || ''} ${lastName || user?.lastName || ''}`.trim() || 'Patron';
+  const initials = firstName && lastName
+    ? `${firstName[0]}${lastName[0]}`.toUpperCase()
+    : user?.firstName
+    ? `${user.firstName[0]}${user.lastName?.[0] || ''}`.toUpperCase()
+    : 'U';
+  const fullName =
+    `${firstName || user?.firstName || ''} ${lastName || user?.lastName || ''}`.trim() ||
+    user?.email ||
+    user?.phone ||
+    '';
 
   const handleSignOut = () => {
     logout();
@@ -248,7 +256,7 @@ export const CustomerProfilePage: React.FC = () => {
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
                       required
-                      placeholder="Sara"
+                      placeholder="First Name"
                       className="w-full bg-[#0E0B09] border border-stone-800 rounded-lg px-4 py-2.5 text-stone-100 placeholder-stone-600 focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] text-sm transition-all"
                     />
                   </div>
@@ -263,7 +271,7 @@ export const CustomerProfilePage: React.FC = () => {
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value)}
                       required
-                      placeholder="Tadesse"
+                      placeholder="Last Name"
                       className="w-full bg-[#0E0B09] border border-stone-800 rounded-lg px-4 py-2.5 text-stone-100 placeholder-stone-600 focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] text-sm transition-all"
                     />
                   </div>

@@ -113,7 +113,9 @@ export const MyBookingsPage: React.FC = () => {
                 title="Profile & Settings"
               >
                 <span className="material-symbols-outlined text-[17px] text-[#D4AF37]">account_circle</span>
-                <span className="max-w-[100px] truncate">{user?.firstName || 'Patron'}</span>
+                <span className="max-w-[140px] truncate">
+                  {user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user?.email || user?.phone || ''}
+                </span>
               </Link>
               <button
                 type="button"

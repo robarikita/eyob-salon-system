@@ -82,6 +82,30 @@ const DICTIONARY: Record<string, TranslationEntry> = {
   'profile.completed': { en: 'Completed', am: 'የተጠናቀቁ', bilingual: 'Completed / የተጠናቀቁ' },
   'profile.active': { en: 'Active', am: 'ንቁ', bilingual: 'Active / ንቁ' },
   'profile.total': { en: 'Total Visits', am: 'ጠቅላላ ጉብኝቶች', bilingual: 'Total Visits / ጠቅላላ ጉብኝቶች' },
+
+  // Booking Flow & Wizard
+  'book.step1': { en: 'Service & Specialist', am: 'አገልግሎት እና ባለሙያ', bilingual: 'Service & Specialist / አገልግሎት እና ባለሙያ' },
+  'book.step2': { en: 'Date & Time', am: 'ቀን እና ሰዓት', bilingual: 'Date & Time / ቀን እና ሰዓት' },
+  'book.step3': { en: 'Review & Summary', am: 'ማጠቃለያ', bilingual: 'Review & Summary / ማጠቃለያ' },
+  'book.step4': { en: 'Confirmation', am: 'ማረጋገጫ', bilingual: 'Confirmation / ማረጋገጫ' },
+  'book.selectRitual': { en: 'Select Service Ritual', am: 'አገልግሎት ይምረጡ', bilingual: 'Select Service Ritual / አገልግሎት ይምረጡ' },
+  'book.selectSpecialist': { en: 'Select Preferred Specialist', am: 'ባለሙያ ይምረጡ', bilingual: 'Select Preferred Specialist / ባለሙያ ይምረጡ' },
+  'book.anySpecialist': { en: 'Any Available Specialist', am: 'ማንኛውም ዝግጁ ባለሙያ', bilingual: 'Any Available Specialist / ማንኛውም ዝግጁ ባለሙያ' },
+  'book.continueSchedule': { en: 'Continue to Schedule', am: 'ወደ ቀጠሮ ሰዓት ይለፉ', bilingual: 'Continue to Schedule / ወደ ቀጠሮ ሰዓት ይለፉ' },
+  'book.continueReview': { en: 'Continue to Review', am: 'ቀጠሮውን ያረጋግጡ', bilingual: 'Continue to Review / ቀጠሮውን ያረጋግጡ' },
+  'book.confirmReserve': { en: 'Book Appointment', am: 'ቀጠሮ ይያዙ', bilingual: 'Book Appointment / ቀጠሮ ይያዙ' },
+  'book.loginRequired': { en: 'Please sign in to confirm your appointment', am: 'ቀጠሮዎን ለማጠናቀቅ እባክዎ ይግቡ', bilingual: 'Please sign in to confirm your appointment / ቀጠሮዎን ለማጠናቀቅ እባክዎ ይግቡ' },
+  'book.changeBranch': { en: 'Change Branch', am: 'ቅርንጫፍ ቀይር', bilingual: 'Change Branch / ቅርንጫፍ ቀይር' },
+  'book.selectBranch': { en: 'Select Sanctuary Branch', am: 'ቅርንጫፍ ይምረጡ', bilingual: 'Select Sanctuary Branch / ቅርንጫፍ ይምረጡ' },
+  'book.backServices': { en: 'Back to Services', am: 'ወደ አገልግሎቶች ተመለስ', bilingual: 'Back to Services / ወደ አገልግሎቶች ተመለስ' },
+  'book.backSchedule': { en: 'Back to Schedule', am: 'ወደ ቀጠሮ ሰዓት ተመለስ', bilingual: 'Back to Schedule / ወደ ቀጠሮ ሰዓት ተመለስ' },
+  'book.financialLedger': { en: 'Financial Ledger', am: 'የክፍያ ማጠቃለያ', bilingual: 'Financial Ledger / የክፍያ ማጠቃለያ' },
+  'book.totalTariff': { en: 'Ritual Full Tariff', am: 'ሙሉ ዋጋ', bilingual: 'Ritual Full Tariff / ሙሉ ዋጋ' },
+  'book.deposit': { en: 'Advance Deposit', am: 'የቅድመ ክፍያ ተቀማጭ', bilingual: 'Advance Deposit / የቅድመ ክፍያ ተቀማጭ' },
+  'book.balanceDue': { en: 'Balance Due at Reception', am: 'በቦታው የሚከፈል ቀሪ', bilingual: 'Balance Due at Reception / በቦታው የሚከፈል ቀሪ' },
+  'book.notes': { en: 'Client Notes & Requests', am: 'ልዩ ማስታወሻዎች', bilingual: 'Client Notes & Requests / ልዩ ማስታወሻዎች' },
+  'book.restoredDraft': { en: 'Restored Pending Appointment Draft', am: 'የተያዘ የቀጠሮ ረቂቅ ተመልሷል', bilingual: 'Restored Pending Appointment Draft / የተያዘ የቀጠሮ ረቂቅ ተመልሷል' },
+  'book.finishBooking': { en: 'Complete Reservation', am: 'ቀጠሮውን ያጠናቅቁ', bilingual: 'Complete Reservation / ቀጠሮውን ያጠናቅቁ' },
 };
 
 interface LanguageContextType {

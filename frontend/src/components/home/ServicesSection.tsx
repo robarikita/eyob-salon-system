@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 
 interface ServiceItem {
   id: string;
@@ -44,14 +45,13 @@ export const servicesData: ServiceItem[] = [
 ];
 
 export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectService }) => {
+  const navigate = useNavigate();
+
   const handleServiceClick = (serviceName: string) => {
     if (onSelectService) {
       onSelectService(serviceName);
     }
-    const el = document.querySelector('#book');
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
-    }
+    navigate('/book');
   };
 
   return (
@@ -67,13 +67,8 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
               Explore our premium beauty services
             </p>
           </div>
-          <a
-            href="#book"
-            onClick={(e) => {
-              e.preventDefault();
-              const el = document.querySelector('#book');
-              el?.scrollIntoView({ behavior: 'smooth' });
-            }}
+          <Link
+            to="/book"
             className="mt-4 sm:mt-0 inline-flex items-center gap-1.5 text-stone-900 hover:text-amber-800 font-bold text-xs uppercase tracking-wider transition-colors group cursor-pointer"
           >
             <span>VIEW ALL SERVICES</span>
@@ -86,7 +81,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
             >
               <path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-          </a>
+          </Link>
         </div>
 
         {/* Services Grid Cards */}
