@@ -287,7 +287,12 @@ export const RolesManagementPage: React.FC = () => {
                           {admin.branch ? (
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#181412] text-[#FAF7F2] border border-[#3E3834]">
                               <span className="material-symbols-outlined text-xs text-[#D4AF37]">location_on</span>
-                              {admin.branch.name}
+                              <span>{admin.branch.name}</span>
+                              {!admin.branch.isActive && (
+                                <span className="ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-950/80 text-amber-400 border border-amber-800/60 uppercase">
+                                  Inactive / ዝግ
+                                </span>
+                              )}
                             </span>
                           ) : (
                             <span className="text-stone-500 italic">Unassigned</span>

@@ -175,7 +175,6 @@ export class BranchService {
 
     // Public / Customer / Employee view
     const branches = await prisma.branch.findMany({
-      where: { isActive: true },
       include: {
         branchHours: {
           orderBy: { dayOfWeek: "asc" },
@@ -367,6 +366,120 @@ export class BranchService {
         isActive: false,
       },
     };
+  }
+
+  static async permanentDeleteBranch(id: string) {
+    const branch = await prisma.branch.findUnique({ where: { id } });
+    if (!branch) throw new NotFoundError("Branch not found");
+
+    return prisma.$transaction(async (tx) => {
+      // 1. Find all bookings for this branch
+      const branchBookings = await tx.booking.findMany({
+        where: { branchId: id },
+        select: { id: true },
+      });
+      const bookingIds = branchBookings.map((b) => b.id);
+
+      if (bookingIds.length > 0) {
+        // Delete payment webhook logs for these bookings
+        await tx.paymentWebhookLog.deleteMany({
+          where: { payment: { bookingId: { in: bookingIds } } },
+        });
+        // Delete payments for these bookings
+        await tx.payment.deleteMany({
+          where: { bookingId: { in: bookingIds } },
+        });
+        // Delete reviews on booking items for these bookings
+        await tx.review.deleteMany({
+          where: { bookingItem: { bookingId: { in: bookingIds } } },
+        });
+        // Delete booking items
+        await tx.bookingItem.deleteMany({
+          where: { bookingId: { in: bookingIds } },
+        });
+        // Delete bookings
+        await tx.booking.deleteMany({
+          where: { id: { in: bookingIds } },
+        });
+      }
+
+      // 2. Clear employee associations
+      const branchEmployees = await tx.employee.findMany({
+        where: { branchId: id },
+        select: { id: true },
+      });
+      const employeeIds = branchEmployees.map((e) => e.id);
+      if (employeeIds.length > 0) {
+        await tx.bookingItem.updateMany({
+          where: { employeeId: { in: employeeIds } },
+          data: { employeeId: null },
+        });
+        await tx.scheduleException.deleteMany({
+          where: { employeeId: { in: employeeIds } },
+        });
+        await tx.employeeSchedule.deleteMany({
+          where: { employeeId: { in: employeeIds } },
+        });
+        await tx.employeeService.deleteMany({
+          where: { employeeId: { in: employeeIds } },
+        });
+        await tx.employee.deleteMany({
+          where: { branchId: id },
+        });
+      }
+
+      // 3. Delete branch-specific services and branchService joins
+      await tx.branchService.deleteMany({
+        where: { branchId: id },
+      });
+      await tx.service.deleteMany({
+        where: { branchId: id },
+      });
+
+      // 4. Delete branch operating hours
+      await tx.branchHours.deleteMany({
+        where: { branchId: id },
+      });
+
+      // 5. Handle branch-scoped roles
+      const branchRoles = await tx.role.findMany({
+        where: { branchId: id },
+        select: { id: true },
+      });
+      const roleIds = branchRoles.map((r) => r.id);
+      if (roleIds.length > 0) {
+        await tx.user.updateMany({
+          where: { roleId: { in: roleIds } },
+          data: { roleId: null },
+        });
+        await tx.rolePermission.deleteMany({
+          where: { roleId: { in: roleIds } },
+        });
+        await tx.role.deleteMany({
+          where: { branchId: id },
+        });
+      }
+
+      // 6. Unlink users assigned to this branch
+      await tx.user.updateMany({
+        where: { branchId: id },
+        data: { branchId: null },
+      });
+
+      // 7. Delete the branch itself
+      await tx.branch.delete({
+        where: { id },
+      });
+
+      return {
+        success: true,
+        message: `Branch "${branch.name}" permanently deleted and removed from the system.`,
+        data: {
+          id: branch.id,
+          name: branch.name,
+        },
+      };
+    });
   }
 
   static async toggleBranchStatus(id: string, isActive?: boolean) {

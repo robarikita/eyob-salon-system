@@ -85,7 +85,13 @@ export const BookAppointmentPage: React.FC = () => {
           }
         }
 
-        setSelectedBranch(initialBranch || activeBranches[0] || null);
+        const openBranches = activeBranches.filter((b) => b.isActive !== false);
+        const resolvedInitial =
+          initialBranch && initialBranch.isActive !== false
+            ? initialBranch
+            : openBranches[0] || activeBranches[0] || null;
+
+        setSelectedBranch(resolvedInitial);
       } catch (err) {
         console.error('Failed to load branches:', err);
       }
@@ -568,12 +574,17 @@ export const BookAppointmentPage: React.FC = () => {
             {/* Continue Button */}
             <button
               onClick={handleContinue}
-              disabled={!selectedService || !selectedBranch}
+              disabled={!selectedService || !selectedBranch || selectedBranch.isActive === false}
               className="w-full py-3.5 rounded bg-[#D4AF37] hover:bg-[#C59A3F] text-[#0E0B09] font-bold text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 cursor-pointer"
             >
               <span>{t('book.continueSchedule')}</span>
               <span className="material-symbols-outlined text-sm">arrow_forward</span>
             </button>
+            {selectedBranch?.isActive === false && (
+              <p className="text-[11px] text-amber-400 font-semibold text-center mt-2">
+                Temporarily Closed / ይህ ቅርንጫፍ ለጊዜው ዝግ ነው
+              </p>
+            )}
             <p className="text-[10px] text-stone-400 text-center mt-3">
               Hold secured with sanitation & master readiness protocols
             </p>
@@ -597,31 +608,44 @@ export const BookAppointmentPage: React.FC = () => {
               </button>
             </div>
             <div className="space-y-3 mb-6 max-h-[60vh] overflow-y-auto">
-              {branches.map((b) => (
-                <div
-                  key={b.id}
-                  onClick={() => {
-                    setSelectedBranch(b);
-                    setShowBranchModal(false);
-                  }}
-                  className={`p-4 rounded-xl border cursor-pointer transition ${
-                    selectedBranch?.id === b.id
-                      ? 'border-[#D4AF37] bg-[#241E1A] ring-1 ring-[#D4AF37]'
-                      : 'border-stone-800 bg-[#0E0B09] hover:border-[#D4AF37]/50'
-                  }`}
-                >
-                  <div className="flex items-center justify-between font-bold text-sm text-stone-100">
-                    <span>{b.name}</span>
-                    {selectedBranch?.id === b.id && (
-                      <span className="text-xs text-[#D4AF37] font-semibold">Active</span>
-                    )}
+              {branches.map((b) => {
+                const isClosed = b.isActive === false;
+                return (
+                  <div
+                    key={b.id}
+                    onClick={() => {
+                      if (isClosed) return;
+                      setSelectedBranch(b);
+                      setShowBranchModal(false);
+                    }}
+                    className={`p-4 rounded-xl border transition ${
+                      isClosed
+                        ? 'border-stone-800 bg-[#0E0B09]/60 opacity-60 cursor-not-allowed'
+                        : selectedBranch?.id === b.id
+                        ? 'border-[#D4AF37] bg-[#241E1A] ring-1 ring-[#D4AF37] cursor-pointer'
+                        : 'border-stone-800 bg-[#0E0B09] hover:border-[#D4AF37]/50 cursor-pointer'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between font-bold text-sm text-stone-100">
+                      <div className="flex items-center gap-2">
+                        <span>{b.name}</span>
+                        {isClosed && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/90 text-amber-400 border border-amber-800/60 uppercase">
+                            Temporarily Closed / ለጊዜው ዝግ ነው
+                          </span>
+                        )}
+                      </div>
+                      {selectedBranch?.id === b.id && !isClosed && (
+                        <span className="text-xs text-[#D4AF37] font-semibold">Active</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-stone-400 mt-1">
+                      {b.address || b.addressLine || b.city || 'Addis Ababa'}
+                    </p>
+                    {b.phone && <p className="text-[11px] text-stone-500 font-mono mt-0.5">{b.phone}</p>}
                   </div>
-                  <p className="text-xs text-stone-400 mt-1">
-                    {b.address || b.addressLine || b.city || 'Addis Ababa'}
-                  </p>
-                  {b.phone && <p className="text-[11px] text-stone-500 font-mono mt-0.5">{b.phone}</p>}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

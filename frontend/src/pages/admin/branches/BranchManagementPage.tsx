@@ -204,12 +204,39 @@ export const BranchManagementPage: React.FC = () => {
     }
   };
 
-  // Delete Branch Handler
-  const handleDeleteBranch = async () => {
+  // Toggle Branch Status (Active vs Temporary Deactivation)
+  const handleToggleStatus = async (branch: BranchItem) => {
+    try {
+      const res = await fetch(`/api/v1/branches/${branch.id}/toggle-status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ isActive: !branch.isActive }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(
+          branch.isActive
+            ? `${branch.name} deactivated (temporarily closed).`
+            : `${branch.name} activated.`
+        );
+        fetchBranches();
+      } else {
+        showToast(data.message || 'Failed to toggle branch status', 'error');
+      }
+    } catch {
+      showToast('Error toggling branch status', 'error');
+    }
+  };
+
+  // Permanent Delete Branch Handler
+  const handlePermanentDeleteBranch = async () => {
     if (!deleteConfirmBranch) return;
     try {
       setDeletingBranch(true);
-      const res = await fetch(`/api/v1/branches/${deleteConfirmBranch.id}`, {
+      const res = await fetch(`/api/v1/branches/${deleteConfirmBranch.id}/permanent`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -218,14 +245,14 @@ export const BranchManagementPage: React.FC = () => {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        showToast(data.message || `${deleteConfirmBranch.name} deactivated and active bookings cancelled.`);
+        showToast(data.message || `${deleteConfirmBranch.name} permanently deleted.`);
         setDeleteConfirmBranch(null);
         fetchBranches();
       } else {
-        showToast(data.message || 'Failed to deactivate branch', 'error');
+        showToast(data.message || 'Failed to permanently delete branch', 'error');
       }
     } catch {
-      showToast('Error deactivating branch', 'error');
+      showToast('Error permanently deleting branch', 'error');
     } finally {
       setDeletingBranch(false);
     }
@@ -574,25 +601,43 @@ export const BranchManagementPage: React.FC = () => {
                     </button>
 
                     {isOwner && (
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEdit(branch)}
-                          className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-[#231D1A] hover:bg-[#2C2724] text-[#D4AF37] border border-[#D4AF37]/40 hover:border-[#D4AF37] rounded-lg text-xs font-semibold transition-colors"
-                          title={t('branch.edit')}
-                        >
-                          <span className="material-symbols-outlined text-sm">edit</span>
-                          <span>{t('branch.edit')}</span>
-                        </button>
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(branch)}
+                            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-[#231D1A] hover:bg-[#2C2724] text-[#D4AF37] border border-[#D4AF37]/40 hover:border-[#D4AF37] rounded-lg text-xs font-semibold transition-colors"
+                            title={t('branch.edit')}
+                          >
+                            <span className="material-symbols-outlined text-sm">edit</span>
+                            <span>{t('branch.edit')}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleToggleStatus(branch)}
+                            className={`inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
+                              branch.isActive
+                                ? 'bg-amber-950/30 hover:bg-amber-950/50 text-amber-300 border-amber-900/50 hover:border-amber-700'
+                                : 'bg-emerald-950/30 hover:bg-emerald-950/50 text-emerald-300 border-emerald-900/50 hover:border-emerald-700'
+                            }`}
+                            title={branch.isActive ? 'Deactivate / አቦዝን' : 'Activate / አንቃ'}
+                          >
+                            <span className="material-symbols-outlined text-sm">
+                              {branch.isActive ? 'pause_circle' : 'play_circle'}
+                            </span>
+                            <span>{branch.isActive ? 'Deactivate / አቦዝን' : 'Activate / አንቃ'}</span>
+                          </button>
+                        </div>
 
                         <button
                           type="button"
                           onClick={() => setDeleteConfirmBranch(branch)}
-                          className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-red-950/30 hover:bg-red-950/60 text-red-300 border border-red-900/40 hover:border-red-800 rounded-lg text-xs font-semibold transition-colors"
-                          title={t('branch.delete')}
+                          className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-red-950/25 hover:bg-red-950/50 text-red-300 border border-red-900/40 hover:border-red-800 rounded-lg text-xs font-semibold transition-colors"
+                          title="Delete Permanently / በቋሚነት አጥፋ"
                         >
-                          <span className="material-symbols-outlined text-sm">delete</span>
-                          <span>{t('branch.delete')}</span>
+                          <span className="material-symbols-outlined text-sm">delete_forever</span>
+                          <span>Delete Permanently / በቋሚነት አጥፋ</span>
                         </button>
                       </div>
                     )}
@@ -1016,7 +1061,7 @@ export const BranchManagementPage: React.FC = () => {
           </div>
         )}
 
-        {/* Delete Confirmation Modal (Owner Only) */}
+        {/* Permanent Delete Confirmation Modal (Owner Only) */}
         {deleteConfirmBranch && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
             <div className="bg-[#181412] border border-red-900/60 text-[#FAF7F2] rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
@@ -1026,7 +1071,7 @@ export const BranchManagementPage: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-base font-serif font-bold text-red-400">
-                    Deactivate Branch / ቅርንጫፍ አጥፋ
+                    Permanent Branch Removal / በቋሚነት ማጥፋት
                   </h3>
                   <p className="text-xs text-[#FAF7F2] font-semibold">{deleteConfirmBranch.name}</p>
                 </div>
@@ -1034,11 +1079,11 @@ export const BranchManagementPage: React.FC = () => {
 
               <div className="space-y-2 text-xs text-[#A8A29E]">
                 <p>
-                  Are you sure you want to deactivate and remove this branch from active salon operations?
+                  Are you sure you want to PERMANENTLY delete <strong className="text-white">{deleteConfirmBranch.name}</strong> from the database?
                 </p>
-                <div className="p-3 bg-red-950/30 border border-red-900/40 rounded-lg text-red-300">
-                  <span className="font-semibold block mb-0.5">Warning / ማስጠንቀቂያ:</span>
-                  All active, pending, and confirmed appointments for this branch will be immediately revoked and cancelled.
+                <div className="p-3 bg-red-950/40 border border-red-900/60 rounded-lg text-red-300">
+                  <span className="font-semibold block mb-0.5">Cascade Warning / አደጋ ማስጠንቀቂያ:</span>
+                  All appointment records, operating schedules, specialist assignments, and local branch configs will be permanently erased. This action CANNOT be undone.
                 </div>
               </div>
 
@@ -1053,11 +1098,11 @@ export const BranchManagementPage: React.FC = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={handleDeleteBranch}
+                  onClick={handlePermanentDeleteBranch}
                   disabled={deletingBranch}
                   className="px-5 py-2 bg-red-700 hover:bg-red-800 text-white rounded-lg font-bold uppercase tracking-wider transition shadow-md disabled:opacity-50"
                 >
-                  {deletingBranch ? 'Deactivating...' : 'Confirm Delete / አጥፋ'}
+                  {deletingBranch ? 'Deleting...' : 'Permanent Delete / በቋሚነት አጥፋ'}
                 </button>
               </div>
             </div>

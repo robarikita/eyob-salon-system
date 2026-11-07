@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import AdminLayout from '../../../components/admin/AdminLayout';
 import { employeeApi, DashboardMetrics, Employee } from '../../../api/employeeApi';
+import { useAuth } from '../../../context/AuthContext';
 
 export const EmployeeDashboard: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [selectedBranch, setSelectedBranch] = useState('all');
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [liveEmployees, setLiveEmployees] = useState<Employee[]>([]);
-  const [isGlobalOwner, setIsGlobalOwner] = useState(true);
   const [statusFilter, setStatusFilter] = useState<'all' | 'in_session' | 'available'>('all');
 
   useEffect(() => {
@@ -54,23 +55,18 @@ export const EmployeeDashboard: React.FC = () => {
             </p>
           </div>
 
-          {/* Scope Switcher Control */}
-          <div className="bg-surface-container-low p-2 rounded-xl flex flex-wrap items-center gap-2 self-start xl:self-auto shadow-sm">
+          {/* Dynamic Authenticated Scope Indicator */}
+          <div className="bg-surface-container-low p-2 rounded-xl flex items-center gap-2 self-start xl:self-auto shadow-sm">
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-container-lowest text-on-surface shadow-sm text-xs">
               <span className="w-2 h-2 rounded-full bg-primary-container animate-pulse" />
-              <span className="text-secondary">Viewing as:</span>
-              <span className="font-bold text-on-surface">
-                {isGlobalOwner ? 'Global Owner (Cross-Branch)' : 'Bole Admin'}
+              <span className="text-secondary">Logged in as:</span>
+              <span className="font-bold text-[#D4AF37]">
+                {user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : 'Proprietor'}
+              </span>
+              <span className="text-[11px] bg-[#231D1A] px-2 py-0.5 rounded text-stone-300 font-medium">
+                {user?.role === 'OWNER' ? 'Proprietor / ባለቤት' : 'Branch Admin / አስተዳዳሪ'}
               </span>
             </div>
-            <button
-              onClick={() => setIsGlobalOwner(!isGlobalOwner)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-surface-variant transition-colors text-xs text-secondary hover:text-on-surface"
-              type="button"
-            >
-              <span className="material-symbols-outlined text-[16px] text-primary">swap_horiz</span>
-              <span>{isGlobalOwner ? 'Switch to Bole Admin' : 'Switch to Global Owner'}</span>
-            </button>
           </div>
         </div>
 

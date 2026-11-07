@@ -44,6 +44,13 @@ router.delete(
   BranchController.deleteBranch
 );
 
+router.delete(
+  "/:id/permanent",
+  authenticate,
+  authorize("OWNER"),
+  BranchController.permanentDeleteBranch
+);
+
 // Branch status toggle (Owner-only)
 router.patch(
   "/:id/status",

@@ -44,6 +44,7 @@ import AdminAppointmentsPage from './pages/admin/appointments/AdminAppointmentsP
 import RolesManagementPage from './pages/admin/roles/RolesManagementPage';
 import AuditLogsPage from './pages/admin/audit/AuditLogsPage';
 import BranchManagementPage from './pages/admin/branches/BranchManagementPage';
+import ClienteleDirectoryPage from './pages/admin/clientele/ClienteleDirectoryPage';
 
 export const App: React.FC = () => {
   return (
@@ -115,6 +116,14 @@ export const App: React.FC = () => {
               element={
                 <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
                   <AdminAppointmentsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/clientele"
+              element={
+                <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
+                  <ClienteleDirectoryPage />
                 </ProtectedRoute>
               }
             />

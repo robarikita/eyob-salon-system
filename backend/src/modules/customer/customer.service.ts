@@ -1,8 +1,238 @@
 import prisma from "../../utils/prisma";
-import { NotFoundError, ConflictError } from "../../errors/AppError";
+import { NotFoundError, ConflictError, ForbiddenError } from "../../errors/AppError";
 import { UpdateProfileInput } from "./customer.schema";
+import { UserRole } from "@prisma/client";
+
+export interface CallerUser {
+  id: string;
+  role: UserRole;
+  branchId: string | null;
+  phoneNumber?: string;
+}
 
 export class CustomerService {
+  /**
+   * Get single customer profile by ID with strict access control.
+   * Customer A querying Customer B throws 403 Forbidden.
+   */
+  static async getCustomerById(requestedId: string, caller: CallerUser) {
+    if (caller.role === "CUSTOMER" && caller.id !== requestedId) {
+      throw new ForbiddenError("Access denied: unauthorized profile query");
+    }
+
+    return this.getProfile(requestedId);
+  }
+
+  /**
+   * List customers with search, pagination, and multi-branch visit metrics.
+   * Restricted to OWNER and BRANCH_ADMIN.
+   */
+  static async listCustomers(
+    filter: { search?: string; page?: number; limit?: number },
+    caller: CallerUser
+  ) {
+    if (caller.role !== "OWNER" && caller.role !== "BRANCH_ADMIN") {
+      throw new ForbiddenError("Access denied: unauthorized clientele query");
+    }
+
+    const page = Math.max(1, Number(filter.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(filter.limit) || 20));
+    const skip = (page - 1) * limit;
+
+    const whereClause: any = {
+      role: "CUSTOMER",
+    };
+
+    if (filter.search && filter.search.trim()) {
+      const q = filter.search.trim();
+      whereClause.OR = [
+        { firstName: { contains: q, mode: "insensitive" } },
+        { lastName: { contains: q, mode: "insensitive" } },
+        { email: { contains: q, mode: "insensitive" } },
+        { phone: { contains: q } },
+      ];
+    }
+
+    const [total, users] = await Promise.all([
+      prisma.user.count({ where: whereClause }),
+      prisma.user.findMany({
+        where: whereClause,
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          role: true,
+          preferredLang: true,
+          smsNotifications: true,
+          emailNotifications: true,
+          createdAt: true,
+          bookings: {
+            select: {
+              id: true,
+              status: true,
+              totalAmount: true,
+              depositPaid: true,
+              createdAt: true,
+              branch: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    const customers = users.map((u) => {
+      const totalVisits = u.bookings.length;
+      const completedVisits = u.bookings.filter((b) => b.status === "COMPLETED").length;
+      const activeBookings = u.bookings.filter((b) =>
+        ["CONFIRMED", "PENDING_PAYMENT", "IN_PROGRESS"].includes(b.status)
+      ).length;
+
+      const branchMap: Record<string, { branchId: string; branchName: string; count: number }> = {};
+      for (const b of u.bookings) {
+        if (b.branch) {
+          if (!branchMap[b.branch.id]) {
+            branchMap[b.branch.id] = {
+              branchId: b.branch.id,
+              branchName: b.branch.name,
+              count: 0,
+            };
+          }
+          branchMap[b.branch.id].count += 1;
+        }
+      }
+
+      return {
+        id: u.id,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        fullName: `${u.firstName} ${u.lastName}`.trim(),
+        email: u.email,
+        phone: u.phone,
+        preferredLang: u.preferredLang,
+        smsNotifications: u.smsNotifications,
+        emailNotifications: u.emailNotifications,
+        createdAt: u.createdAt,
+        totalVisits,
+        completedVisits,
+        activeBookings,
+        branchVisits: Object.values(branchMap),
+      };
+    });
+
+    return {
+      customers,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Retrieve complete cross-branch appointment history for a customer dossier.
+   */
+  static async getCustomerHistory(customerId: string, caller: CallerUser) {
+    if (caller.role === "CUSTOMER" && caller.id !== customerId) {
+      throw new ForbiddenError("Access denied: unauthorized history query");
+    }
+
+    if (caller.role !== "OWNER" && caller.role !== "BRANCH_ADMIN" && caller.id !== customerId) {
+      throw new ForbiddenError("Access denied: unauthorized history query");
+    }
+
+    const customer = await prisma.user.findUnique({
+      where: { id: customerId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        preferredLang: true,
+        createdAt: true,
+      },
+    });
+
+    if (!customer) {
+      throw new NotFoundError("Customer not found");
+    }
+
+    const bookings = await prisma.booking.findMany({
+      where: { customerId },
+      include: {
+        branch: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            city: true,
+            addressLine: true,
+            phoneNumber: true,
+          },
+        },
+        items: {
+          include: {
+            employee: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                ritualTitle: true,
+                workstation: true,
+              },
+            },
+            service: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+                amharicName: true,
+                category: true,
+              },
+            },
+            review: {
+              select: {
+                id: true,
+                rating: true,
+                comment: true,
+                createdAt: true,
+              },
+            },
+          },
+        },
+        payments: {
+          select: {
+            id: true,
+            amount: true,
+            status: true,
+            method: true,
+            transactionRef: true,
+            createdAt: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return {
+      customer: {
+        ...customer,
+        fullName: `${customer.firstName} ${customer.lastName}`.trim(),
+      },
+      appointments: bookings,
+    };
+  }
   static async getProfile(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },

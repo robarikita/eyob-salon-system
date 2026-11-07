@@ -57,6 +57,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   const navItems = [
     { label: 'Overview / አጠቃላይ', path: '/admin/employees/dashboard', icon: 'dashboard' },
     { label: 'Appointments / ቀጠሮዎች', path: '/admin/appointments', icon: 'calendar_month' },
+    { label: 'Clientele / ደንበኞች', path: '/admin/clientele', icon: 'group' },
     ...(hasPermission('manage_branches')
       ? [{ label: 'Branches / ቅርንጫፎች', path: '/admin/branches', icon: 'domain' }]
       : []),
@@ -375,15 +376,26 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
               to="/account/profile"
               className="flex items-center gap-2.5 pl-1 sm:pl-2 group hover:opacity-90 transition-opacity"
             >
-              <div className="hidden sm:flex flex-col text-right">
-                <span className="text-xs font-bold text-on-surface">
-                  {user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Administrator' : 'Administrator'}
-                </span>
-                <span className="text-[11px] text-secondary">
-                  {user?.role === 'OWNER' ? 'Proprietor' : user?.role || 'Admin'}
-                </span>
-              </div>
-              <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-white shadow-sm font-serif font-bold text-sm">
+              {user ? (
+                <div className="hidden sm:flex flex-col text-right">
+                  <span className="text-xs font-bold text-on-surface">
+                    {`${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Administrator'}
+                  </span>
+                  <span className="text-[11px] text-[#D4AF37] font-medium">
+                    {user.role === 'OWNER'
+                      ? 'Proprietor / ባለቤት'
+                      : user.role === 'BRANCH_ADMIN'
+                      ? 'Branch Admin / አስተዳዳሪ'
+                      : user.role || 'Admin'}
+                  </span>
+                </div>
+              ) : (
+                <div className="hidden sm:flex flex-col items-end gap-1">
+                  <div className="h-3 w-24 bg-[#2C2724] animate-pulse rounded" />
+                  <div className="h-2.5 w-16 bg-[#2C2724] animate-pulse rounded" />
+                </div>
+              )}
+              <div className="w-9 h-9 rounded-full bg-[#D4AF37] flex items-center justify-center text-[#0E0B09] shadow-sm font-serif font-bold text-sm">
                 {user ? `${user.firstName?.[0] || 'A'}${user.lastName?.[0] || ''}` : 'A'}
               </div>
             </Link>
