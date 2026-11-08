@@ -52,6 +52,7 @@ router.delete(
   ServiceController.deleteCategory
 );
 router.get("/", optionalAuthenticate, ServiceController.listServices);
+router.get("/:id/availability", optionalAuthenticate, ServiceController.getServiceAvailability);
 router.get("/:id", optionalAuthenticate, ServiceController.getServiceById);
 
 // 3. Image Upload (OWNER or manage_services)

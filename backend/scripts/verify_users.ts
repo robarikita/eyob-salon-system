@@ -104,6 +104,7 @@ async function main() {
     body: JSON.stringify({
       identifier: "owner@eyobsalon.com",
       password: "Owner@123",
+      role: "OWNER",
     }),
   });
 
@@ -119,6 +120,7 @@ async function main() {
     body: JSON.stringify({
       identifier: ownerUser.phone,
       password: "Owner@123",
+      role: "OWNER",
     }),
   });
 

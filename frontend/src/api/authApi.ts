@@ -16,6 +16,7 @@ export interface LoginPayload {
   identifier?: string;
   phone?: string;
   password: string;
+  role?: 'CUSTOMER' | 'EMPLOYEE' | 'BRANCH_ADMIN' | 'OWNER';
 }
 
 export interface RegisterPayload {

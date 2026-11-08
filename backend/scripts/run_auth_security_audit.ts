@@ -102,6 +102,7 @@ async function runSecurityAudit() {
   const emailLogin = await postJson("/auth/login", {
     identifier: testEmail,
     password: initialPassword,
+    role: "CUSTOMER",
   });
 
   const emailPassed = emailLogin.status === 200 && !!emailLogin.data.data?.tokens?.accessToken;
@@ -117,6 +118,7 @@ async function runSecurityAudit() {
   const phoneLogin = await postJson("/auth/login", {
     identifier: testPhone,
     password: initialPassword,
+    role: "CUSTOMER",
   });
 
   const phonePassed = phoneLogin.status === 200 && !!phoneLogin.data.data?.tokens?.accessToken;
@@ -132,6 +134,7 @@ async function runSecurityAudit() {
   const invalidCreds = await postJson("/auth/login", {
     identifier: testEmail,
     password: "WrongPassword999!",
+    role: "CUSTOMER",
   });
 
   const invalidPassed = invalidCreds.status === 401 && invalidCreds.data.message === "Invalid credentials";
@@ -194,6 +197,7 @@ async function runSecurityAudit() {
   const preResetLogin = await postJson("/auth/login", {
     identifier: testEmail,
     password: initialPassword,
+    role: "CUSTOMER",
   });
   const oldAccessToken = preResetLogin.data.data?.tokens?.accessToken;
 
@@ -226,6 +230,7 @@ async function runSecurityAudit() {
   const newLogin = await postJson("/auth/login", {
     identifier: testEmail,
     password: updatedPassword,
+    role: "CUSTOMER",
   });
   const newPasswordWorks = newLogin.status === 200 && !!newLogin.data.data?.tokens?.accessToken;
 
@@ -251,7 +256,7 @@ async function runSecurityAudit() {
   for (let i = 1; i <= 5; i++) {
     const failRes = await postJson(
       "/auth/login",
-      { identifier: testEmail, password: "IncorrectPassword!" },
+      { identifier: testEmail, password: "IncorrectPassword!", role: "CUSTOMER" },
       { "x-test-ip": testIp }
     );
     attemptsResponses.push(failRes.status);
@@ -260,7 +265,7 @@ async function runSecurityAudit() {
   // 6th attempt should be blocked by rate limiter
   const sixthAttempt = await postJson(
     "/auth/login",
-    { identifier: testEmail, password: "IncorrectPassword!" },
+    { identifier: testEmail, password: "IncorrectPassword!", role: "CUSTOMER" },
     { "x-test-ip": testIp }
   );
 

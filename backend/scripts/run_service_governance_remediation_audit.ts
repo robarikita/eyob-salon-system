@@ -71,6 +71,7 @@ async function runAudit() {
     const ownerLogin = await postJson("/auth/login", {
       identifier: "owner@eyobsalon.com",
       password: "Owner@123",
+      role: "OWNER",
     });
     const ownerToken = ownerLogin.data.data?.tokens?.accessToken || ownerLogin.data.data?.accessToken;
     if (!ownerToken) throw new Error("Owner login failed");
@@ -81,6 +82,7 @@ async function runAudit() {
     const adminLogin = await postJson("/auth/login", {
       identifier: "admin.bole@eyobsalon.com",
       password: "Admin@123",
+      role: "BRANCH_ADMIN",
     });
     const adminToken = adminLogin.data.data?.tokens?.accessToken || adminLogin.data.data?.accessToken;
     if (!adminToken) throw new Error("Branch Admin login failed");
@@ -152,8 +154,18 @@ async function runAudit() {
     if (!test2Service?.id) throw new Error("Failed to create test service for delete test");
 
     // Add branch override and history
-    await prisma.branchServicePrice.create({
-      data: {
+    await prisma.branchServicePrice.upsert({
+      where: {
+        branchId_serviceId: {
+          branchId: boleBranch.id,
+          serviceId: test2Service.id,
+        },
+      },
+      update: {
+        customPrice: 1350,
+        isActive: true,
+      },
+      create: {
         branchId: boleBranch.id,
         serviceId: test2Service.id,
         customPrice: 1350,

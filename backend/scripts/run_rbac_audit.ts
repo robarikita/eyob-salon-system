@@ -79,6 +79,7 @@ async function runRbacAudit() {
   const ownerLogin = await postJson("/auth/login", {
     identifier: "owner@eyobsalon.com",
     password: "Owner@123",
+    role: "OWNER",
   });
   const ownerToken = ownerLogin.data.data?.tokens?.accessToken;
   if (!ownerToken) {
@@ -90,6 +91,7 @@ async function runRbacAudit() {
   const adminLogin = await postJson("/auth/login", {
     identifier: "admin.bole@eyobsalon.com",
     password: "Admin@123",
+    role: "BRANCH_ADMIN",
   });
   const adminToken = adminLogin.data.data?.tokens?.accessToken;
   if (!adminToken) {

@@ -230,6 +230,13 @@ export class ServiceRitualService {
       targetBranchId = undefined;
     }
 
+    // Query all active branches for cross-branch pricing comparison & availability suggestions
+    const allActiveBranches = await prisma.branch.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true, slug: true },
+      orderBy: { name: "asc" },
+    });
+
     // Fetch branch defaults if branch context is present
     let targetBranch: { defaultDepositType: DepositType; defaultDepositValue: any } | null = null;
     if (targetBranchId) {
@@ -240,6 +247,53 @@ export class ServiceRitualService {
     }
 
     return services.map((s) => {
+      // Build full cross-branch pricing matrix
+      const branchPricings = allActiveBranches.map((b) => {
+        const bp = s.branchPrices.find((p) => p.branchId === b.id || p.branch?.slug === b.slug);
+        const bs = s.branchServices.find((r) => r.branchId === b.id || r.branch?.slug === b.slug);
+        const isBranchActive = s.isActive && (bp ? bp.isActive !== false : true) && (bs ? bs.isActive !== false : true);
+        const price = bp && bp.customPrice !== null
+          ? Number(bp.customPrice)
+          : bs && bs.customPrice !== null
+          ? Number(bs.customPrice)
+          : Number(s.basePrice);
+        const durationMinutes = bp && bp.customDurationMinutes !== null
+          ? bp.customDurationMinutes
+          : bs && bs.customDurationMinutes !== null
+          ? bs.customDurationMinutes
+          : s.durationMinutes;
+
+        return {
+          branchId: b.id,
+          branchName: b.name,
+          branchSlug: b.slug,
+          price,
+          durationMinutes,
+          isActive: isBranchActive,
+        };
+      });
+
+      const activeBranchPricings = branchPricings.filter((bp) => bp.isActive);
+      const activeBranchIds = activeBranchPricings.map((bp) => bp.branchId);
+      const activeBranchNames = activeBranchPricings.map((bp) => bp.branchName);
+
+      const pricesList = (activeBranchPricings.length > 0 ? activeBranchPricings : branchPricings).map((bp) => bp.price);
+      const minPrice = pricesList.length > 0 ? Math.min(...pricesList) : Number(s.basePrice);
+      const maxPrice = pricesList.length > 0 ? Math.max(...pricesList) : Number(s.basePrice);
+      const isUniformPrice = minPrice === maxPrice;
+
+      const selectedBranchPricing = targetBranchId
+        ? branchPricings.find((bp) => bp.branchId === targetBranchId || bp.branchSlug === targetBranchId)
+        : null;
+
+      const isAvailableAtSelectedBranch = targetBranchId
+        ? (selectedBranchPricing ? selectedBranchPricing.isActive : false)
+        : s.isActive;
+
+      const alternateBranches = branchPricings.filter(
+        (bp) => bp.isActive && (targetBranchId ? bp.branchId !== targetBranchId && bp.branchSlug !== targetBranchId : true)
+      );
+
       // Find matching branch override
       const branchPrice = targetBranchId
         ? s.branchPrices.find((bp) => bp.branchId === targetBranchId || bp.branch?.slug === targetBranchId)
@@ -348,6 +402,16 @@ export class ServiceRitualService {
         effectiveDeposit,
         isActive: s.isActive,
         effectiveActive,
+        isUniformPrice,
+        minPrice,
+        maxPrice,
+        branchPricings,
+        activeBranchIds,
+        activeBranchNames,
+        available: isAvailableAtSelectedBranch,
+        isAvailable: isAvailableAtSelectedBranch,
+        isAvailableAtSelectedBranch,
+        alternateBranches,
         branchPrices: s.branchPrices.map((bp) => ({
           id: bp.id,
           branchId: bp.branchId,
@@ -457,6 +521,58 @@ export class ServiceRitualService {
       });
     }
 
+    const allActiveBranches = await prisma.branch.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true, slug: true },
+      orderBy: { name: "asc" },
+    });
+
+    const branchPricings = allActiveBranches.map((b) => {
+      const bp = service.branchPrices.find((p) => p.branchId === b.id || p.branch?.slug === b.slug);
+      const bs = service.branchServices.find((r) => r.branchId === b.id || r.branch?.slug === b.slug);
+      const isBranchActive = service.isActive && (bp ? bp.isActive !== false : true) && (bs ? bs.isActive !== false : true);
+      const price = bp && bp.customPrice !== null
+        ? Number(bp.customPrice)
+        : bs && bs.customPrice !== null
+        ? Number(bs.customPrice)
+        : Number(service.basePrice);
+      const durationMinutes = bp && bp.customDurationMinutes !== null
+        ? bp.customDurationMinutes
+        : bs && bs.customDurationMinutes !== null
+        ? bs.customDurationMinutes
+        : service.durationMinutes;
+
+      return {
+        branchId: b.id,
+        branchName: b.name,
+        branchSlug: b.slug,
+        price,
+        durationMinutes,
+        isActive: isBranchActive,
+      };
+    });
+
+    const activeBranchPricings = branchPricings.filter((bp) => bp.isActive);
+    const activeBranchIds = activeBranchPricings.map((bp) => bp.branchId);
+    const activeBranchNames = activeBranchPricings.map((bp) => bp.branchName);
+
+    const pricesList = (activeBranchPricings.length > 0 ? activeBranchPricings : branchPricings).map((bp) => bp.price);
+    const minPrice = pricesList.length > 0 ? Math.min(...pricesList) : Number(service.basePrice);
+    const maxPrice = pricesList.length > 0 ? Math.max(...pricesList) : Number(service.basePrice);
+    const isUniformPrice = minPrice === maxPrice;
+
+    const selectedBranchPricing = targetBranchId
+      ? branchPricings.find((bp) => bp.branchId === targetBranchId || bp.branchSlug === targetBranchId)
+      : null;
+
+    const isAvailableAtSelectedBranch = targetBranchId
+      ? (selectedBranchPricing ? selectedBranchPricing.isActive : false)
+      : service.isActive;
+
+    const alternateBranches = branchPricings.filter(
+      (bp) => bp.isActive && (targetBranchId ? bp.branchId !== targetBranchId && bp.branchSlug !== targetBranchId : true)
+    );
+
     let effectiveDeposit = Number(service.depositAmount || 0);
     if (branchPrice && branchPrice.depositType) {
       const dType = branchPrice.depositType;
@@ -518,6 +634,16 @@ export class ServiceRitualService {
       effectiveDeposit,
       isActive: service.isActive,
       effectiveActive: branchPrice ? service.isActive && branchPrice.isActive : branchRule ? service.isActive && branchRule.isActive : service.isActive,
+      isUniformPrice,
+      minPrice,
+      maxPrice,
+      branchPricings,
+      activeBranchIds,
+      activeBranchNames,
+      available: isAvailableAtSelectedBranch,
+      isAvailable: isAvailableAtSelectedBranch,
+      isAvailableAtSelectedBranch,
+      alternateBranches,
       branchPrices: service.branchPrices.map((bp) => ({
         id: bp.id,
         branchId: bp.branchId,
@@ -557,6 +683,26 @@ export class ServiceRitualService {
       })),
       createdAt: service.createdAt,
       updatedAt: service.updatedAt,
+    };
+  }
+
+  /**
+   * Get branch availability and alternate branch suggestions
+   */
+  static async getServiceAvailability(idOrCode: string, branchIdOrSlug: string) {
+    const service = await this.getServiceById(idOrCode, undefined, branchIdOrSlug);
+    return {
+      serviceId: service.id,
+      serviceName: service.name,
+      branchId: branchIdOrSlug,
+      available: service.available,
+      isAvailable: service.isAvailable,
+      isAvailableAtSelectedBranch: service.isAvailableAtSelectedBranch,
+      alternateBranches: service.alternateBranches,
+      branchPricings: service.branchPricings,
+      isUniformPrice: service.isUniformPrice,
+      minPrice: service.minPrice,
+      maxPrice: service.maxPrice,
     };
   }
 
@@ -861,9 +1007,11 @@ export class ServiceRitualService {
         throw new ValidationError("Reason is required / የለውጡ ምክንያት ያስፈልጋል");
       }
 
+      const reqType = data.isActive === false ? "BRANCH_SERVICE_DEACTIVATION" : "PRICE_UPDATE";
+
       const govReq = await prisma.governanceRequest.create({
         data: {
-          type: "PRICE_UPDATE",
+          type: reqType,
           status: "PENDING",
           branchId: data.branchId,
           requestedBy: currentUser.id,
@@ -875,6 +1023,7 @@ export class ServiceRitualService {
             customDurationMinutes: data.customDurationMinutes ?? null,
             depositType: data.depositType ?? null,
             depositValue: data.depositValue ?? null,
+            isActive: data.isActive,
           },
         },
       });
@@ -885,8 +1034,8 @@ export class ServiceRitualService {
         : "Branch Admin";
 
       await NotificationService.notifyOwners({
-        title: "Price Proposal / የዋጋ ጥያቄ",
-        message: `${requesterName} proposed new price for ${service.name}. Reason: ${data.reason.trim()}`,
+        title: data.isActive === false ? "Deactivation Proposal / አገልግሎት የማቆም ጥያቄ" : "Price Proposal / የዋጋ ጥያቄ",
+        message: `${requesterName} proposed ${data.isActive === false ? "deactivation of" : "new price for"} ${service.name}. Reason: ${data.reason.trim()}`,
         type: "GOVERNANCE_REQUEST",
         branchId: data.branchId,
         link: "/admin/governance",
@@ -895,7 +1044,9 @@ export class ServiceRitualService {
       return {
         pendingApproval: true,
         governanceRequestId: govReq.id,
-        message: "Price update proposal submitted for Owner approval",
+        message: data.isActive === false
+          ? "Branch service deactivation proposal submitted for Owner approval"
+          : "Price update proposal submitted for Owner approval",
       };
     }
 

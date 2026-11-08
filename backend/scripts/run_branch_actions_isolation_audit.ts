@@ -76,6 +76,7 @@ async function run() {
   const ownerAuth = await postJson("/auth/login", {
     identifier: "owner@eyobsalon.com",
     password: "Owner@123",
+    role: "OWNER",
   });
   const ownerToken = ownerAuth.data.data?.tokens?.accessToken || ownerAuth.data.data?.accessToken;
   if (!ownerToken) throw new Error("Owner login failed");
@@ -85,6 +86,7 @@ async function run() {
   const boleAuth = await postJson("/auth/login", {
     identifier: "admin.bole@eyobsalon.com",
     password: "Admin@123",
+    role: "BRANCH_ADMIN",
   });
   const boleToken = boleAuth.data.data?.tokens?.accessToken || boleAuth.data.data?.accessToken;
   if (!boleToken) throw new Error("Bole Admin login failed");
@@ -175,6 +177,7 @@ async function run() {
   const updatedAdminLogin = await postJson("/auth/login", {
     identifier: "admin.piassa.updated@eyobsalon.com",
     password: "NewPassword@123",
+    role: "BRANCH_ADMIN",
   });
   record(
     "4. Card Actions: Edit",

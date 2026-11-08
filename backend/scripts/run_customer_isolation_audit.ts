@@ -72,6 +72,7 @@ async function runAudit() {
     const ownerLogin = await postJson("/auth/login", {
       identifier: "owner@eyobsalon.com",
       password: "Owner@123",
+      role: "OWNER",
     });
 
     const ownerToken =

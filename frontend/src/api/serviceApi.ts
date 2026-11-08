@@ -109,6 +109,29 @@ export interface ServiceRitual {
   effectiveTurnaround?: number;
   effectiveDeposit?: number;
   effectiveIsActive?: boolean;
+  isUniformPrice?: boolean;
+  minPrice?: number;
+  maxPrice?: number;
+  branchPricings?: Array<{
+    branchId: string;
+    branchName: string;
+    branchSlug?: string;
+    price: number;
+    durationMinutes: number;
+    isActive: boolean;
+  }>;
+  activeBranchIds?: string[];
+  activeBranchNames?: string[];
+  available?: boolean;
+  isAvailable?: boolean;
+  isAvailableAtSelectedBranch?: boolean;
+  alternateBranches?: Array<{
+    branchId: string;
+    branchName: string;
+    branchSlug?: string;
+    price: number;
+    durationMinutes: number;
+  }>;
 }
 
 export interface GovernanceRequestItem {

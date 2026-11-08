@@ -31,6 +31,7 @@ export const BookAppointmentPage: React.FC = () => {
   const [searchRitualQuery, setSearchRitualQuery] = useState('');
   const [dbCategories, setDbCategories] = useState<{ id: string; name: string; nameAm?: string | null; slug: string; isActive?: boolean }[]>([]);
   const [selectedService, setSelectedService] = useState<ServiceRitual | null>(null);
+  const [viewingRatesServiceId, setViewingRatesServiceId] = useState<string | null>(null);
   const [selectedSpecialist, setSelectedSpecialist] = useState<SpecialistOption>({
     id: 'any',
     name: 'Any Available Specialist / ማንኛውም ዝግጁ ባለሙያ',
@@ -481,6 +482,7 @@ export const BookAppointmentPage: React.FC = () => {
                   const isSelected = selectedService?.id === srv.id;
                   const price = srv.effectivePrice !== undefined ? srv.effectivePrice : srv.basePrice;
                   const duration = srv.effectiveDuration !== undefined ? srv.effectiveDuration : srv.durationMinutes;
+                  const isUnavailableAtBranch = srv.available === false || srv.isAvailable === false || srv.isAvailableAtSelectedBranch === false;
 
                   return (
                     <div
@@ -493,6 +495,27 @@ export const BookAppointmentPage: React.FC = () => {
                       }`}
                     >
                       <div>
+                        {/* Real Cloudinary / Database Image Banner */}
+                        <div className="w-full h-36 rounded-lg mb-3 overflow-hidden bg-[#181412] relative border border-[#E5E2DD]">
+                          {srv.imageUrl ? (
+                            <img
+                              src={srv.imageUrl}
+                              alt={srv.name}
+                              className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-[#181412] to-[#2C2724] text-[#D4AF37]/70">
+                              <span className="material-symbols-outlined text-3xl mb-1">spa</span>
+                              <span className="text-[10px] uppercase tracking-widest font-semibold text-stone-400">Sanctuary Ritual</span>
+                            </div>
+                          )}
+                          {srv.isUniformPrice === false && (
+                            <span className="absolute top-2 right-2 bg-black/80 backdrop-blur-sm text-[#D4AF37] border border-[#D4AF37]/40 px-2 py-0.5 rounded text-[10px] font-semibold">
+                              Variable / ተለዋዋጭ
+                            </span>
+                          )}
+                        </div>
+
                         <div className="flex items-start justify-between gap-2 mb-1.5">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-[#775A00] bg-[#FAF7F2] px-2 py-0.5 rounded border border-[#E5E2DD]">
                             {srv.code}
@@ -503,6 +526,7 @@ export const BookAppointmentPage: React.FC = () => {
                             </span>
                           )}
                         </div>
+
                         <h3 className="font-serif text-lg font-bold text-[#1C1C19] leading-tight mb-0.5">
                           {srv.name}
                         </h3>
@@ -510,18 +534,110 @@ export const BookAppointmentPage: React.FC = () => {
                           <p className="text-xs font-serif text-stone-500 mb-2">{srv.amharicName}</p>
                         )}
                         {srv.description && (
-                          <p className="text-xs text-stone-600 line-clamp-2 mb-4">{srv.description}</p>
+                          <p className="text-xs text-stone-600 line-clamp-2 mb-3">{srv.description}</p>
+                        )}
+
+                        {/* Branch Inactivity & Alternate Branch Suggestions Alert */}
+                        {isUnavailableAtBranch && (
+                          <div className="mb-3 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs">
+                            <div className="flex items-center gap-1 font-semibold text-amber-900 mb-1">
+                              <span className="material-symbols-outlined text-xs">info</span>
+                              <span>Unavailable at {selectedBranch?.name} / በዚህ ቅርንጫፍ አይሰጥም</span>
+                            </div>
+                            {srv.alternateBranches && srv.alternateBranches.length > 0 ? (
+                              <div className="mt-1.5">
+                                <span className="text-[10px] text-amber-800 block mb-1">Book at alternate branch / በዚህ ቅርንጫፍ ይያዙ:</span>
+                                <div className="flex flex-wrap gap-1">
+                                  {srv.alternateBranches.map((alt) => (
+                                    <button
+                                      key={alt.branchId}
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const matched = branches.find((b) => b.id === alt.branchId || b.slug === alt.branchSlug);
+                                        if (matched) {
+                                          setSelectedBranch(matched);
+                                          setSelectedService(srv);
+                                        }
+                                      }}
+                                      className="px-2 py-0.5 rounded bg-[#D4AF37] text-[#0E0B09] font-bold text-[10px] hover:bg-[#C59A3F] transition cursor-pointer"
+                                    >
+                                      {alt.branchName} ({Number(alt.price).toLocaleString()} ETB)
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-stone-500">Currently unavailable / ለጊዜው አይሰጥም</span>
+                            )}
+                          </div>
                         )}
                       </div>
 
-                      <div className="flex items-center justify-between pt-3 border-t border-[#F0EDE9] text-xs">
-                        <span className="text-stone-500 flex items-center gap-1 font-medium">
-                          <span className="material-symbols-outlined text-xs">schedule</span>
-                          {duration} Mins
-                        </span>
-                        <span className="font-bold text-sm text-[#775A00]">
-                          {Number(price).toLocaleString()} ETB
-                        </span>
+                      <div className="flex flex-col pt-3 border-t border-[#F0EDE9] text-xs gap-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-stone-500 flex items-center gap-1 font-medium">
+                            <span className="material-symbols-outlined text-xs">schedule</span>
+                            {duration} Mins
+                          </span>
+                          <div className="text-right">
+                            <span className="font-bold text-sm text-[#775A00]">
+                              {srv.isUniformPrice === false
+                                ? `From ${Number(srv.minPrice || price).toLocaleString()} ETB / እንደ ቅርንጫፉ`
+                                : `${Number(price).toLocaleString()} ETB`}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Branch Rates Trigger */}
+                        {srv.branchPricings && srv.branchPricings.length > 1 && (
+                          <div className="flex justify-end">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setViewingRatesServiceId(viewingRatesServiceId === srv.id ? null : srv.id);
+                              }}
+                              className="text-[10px] text-[#D4AF37] bg-[#181412] hover:bg-[#2C2724] px-2 py-0.5 rounded border border-[#D4AF37]/40 font-semibold transition cursor-pointer"
+                            >
+                              Branch Rates / የቅርንጫፍ ዋጋ
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Branch Rates Dropdown / Card */}
+                        {viewingRatesServiceId === srv.id && srv.branchPricings && (
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            className="mt-2 p-2.5 bg-[#181412] text-[#FAF7F2] rounded-lg border border-[#D4AF37]/40 text-xs animate-fade-in"
+                          >
+                            <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-[#2C2724]">
+                              <span className="font-bold text-[#D4AF37] text-[10px] uppercase tracking-wider">
+                                Branch Rates / የቅርንጫፍ ዋጋ
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setViewingRatesServiceId(null)}
+                                className="text-stone-400 hover:text-white text-[10px]"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            <div className="space-y-1">
+                              {srv.branchPricings.map((bp) => (
+                                <div key={bp.branchId} className="flex items-center justify-between text-[10px]">
+                                  <span className="text-stone-300 flex items-center gap-1">
+                                    <span className={`w-1.5 h-1.5 rounded-full ${bp.isActive ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                                    {bp.branchName}
+                                  </span>
+                                  <span className="font-bold text-[#D4AF37]">
+                                    {Number(bp.price).toLocaleString()} ETB
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -650,10 +766,48 @@ export const BookAppointmentPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Branch Inactivity Warning & Alternate Suggestions in Summary */}
+            {selectedService && (selectedService.available === false || selectedService.isAvailableAtSelectedBranch === false) && (
+              <div className="mb-4 p-3 rounded-lg bg-amber-950/60 border border-amber-600/60 text-xs text-[#FAF7F2]">
+                <div className="flex items-center gap-1.5 font-bold text-amber-400 mb-1">
+                  <span className="material-symbols-outlined text-sm">warning</span>
+                  <span>Unavailable at {selectedBranch?.name} / በዚህ ቅርንጫፍ አይሰጥም</span>
+                </div>
+                {selectedService.alternateBranches && selectedService.alternateBranches.length > 0 ? (
+                  <div>
+                    <span className="text-[10px] text-stone-300 block mb-1.5">Book at alternate branch / በዚህ ቅርንጫፍ ይያዙ:</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedService.alternateBranches.map((alt) => (
+                        <button
+                          key={alt.branchId}
+                          type="button"
+                          onClick={() => {
+                            const matched = branches.find((b) => b.id === alt.branchId || b.slug === alt.branchSlug);
+                            if (matched) setSelectedBranch(matched);
+                          }}
+                          className="px-2.5 py-1 rounded bg-[#D4AF37] hover:bg-[#C59A3F] text-[#0E0B09] font-bold text-[10px] uppercase transition cursor-pointer"
+                        >
+                          {alt.branchName} ({Number(alt.price).toLocaleString()} ETB)
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-stone-400">Currently unavailable / ለጊዜው አይሰጥም</p>
+                )}
+              </div>
+            )}
+
             {/* Continue Button */}
             <button
               onClick={handleContinue}
-              disabled={!selectedService || !selectedBranch || selectedBranch.isActive === false}
+              disabled={
+                !selectedService ||
+                !selectedBranch ||
+                selectedBranch.isActive === false ||
+                selectedService.available === false ||
+                selectedService.isAvailableAtSelectedBranch === false
+              }
               className="w-full py-3.5 rounded bg-[#D4AF37] hover:bg-[#C59A3F] text-[#0E0B09] font-bold text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 cursor-pointer"
             >
               <span>{t('book.continueSchedule')}</span>

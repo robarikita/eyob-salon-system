@@ -59,6 +59,22 @@ export class ServiceController {
     }
   }
 
+  static async getServiceAvailability(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = req.params.id as string;
+      const branchId = (req.query.branchId as string) || "";
+      const result = await ServiceRitualService.getServiceAvailability(id, branchId);
+      res.status(200).json({
+        success: true,
+        status: "success",
+        data: result,
+        ...result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async createService(req: Request, res: Response, next: NextFunction) {
     try {
       if (!req.user) throw new UnauthorizedError();

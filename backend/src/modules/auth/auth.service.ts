@@ -113,6 +113,10 @@ export class AuthService {
       throw new UnauthorizedError("Invalid credentials");
     }
 
+    if (data.role && user.role !== data.role) {
+      throw new UnauthorizedError("Invalid credentials for this account role / ለዚህ ሚና የተሳሳተ መለያ");
+    }
+
     const isValid = await comparePassword(data.password, user.password);
 
     if (!isValid) {

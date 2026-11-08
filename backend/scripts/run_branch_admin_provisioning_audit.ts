@@ -12,7 +12,7 @@ async function runAudit() {
   const ownerLoginRes = await fetch(`${BASE_URL}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ identifier: "owner@eyobsalon.com", password: "Owner@123" }),
+    body: JSON.stringify({ identifier: "owner@eyobsalon.com", password: "Owner@123", role: "OWNER" }),
   });
   const ownerLoginData = await ownerLoginRes.json();
   const ownerToken = ownerLoginData.data?.tokens?.accessToken || ownerLoginData.data?.accessToken;
@@ -97,7 +97,7 @@ async function runAudit() {
   const adminLoginRes = await fetch(`${BASE_URL}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ identifier: testAdminEmail, password: "GerjiAdmin@123" }),
+    body: JSON.stringify({ identifier: testAdminEmail, password: "GerjiAdmin@123", role: "BRANCH_ADMIN" }),
   });
   const adminLoginData = await adminLoginRes.json();
   const adminToken = adminLoginData.data?.tokens?.accessToken || adminLoginData.data?.accessToken;
@@ -140,7 +140,7 @@ async function runAudit() {
   const reLoginRes = await fetch(`${BASE_URL}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ identifier: testAdminEmail, password: "UpdatedGerjiAdmin@123" }),
+    body: JSON.stringify({ identifier: testAdminEmail, password: "UpdatedGerjiAdmin@123", role: "BRANCH_ADMIN" }),
   });
   if (reLoginRes.status !== 200) {
     throw new Error(`Re-login with updated password failed: ${reLoginRes.status}`);

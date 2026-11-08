@@ -12,6 +12,7 @@ export const loginSchema = z.object({
   identifier: z.string().optional(),
   phone: z.string().optional(),
   password: z.string().min(6, "Password must be at least 6 characters"),
+  role: z.enum(["CUSTOMER", "BRANCH_ADMIN", "EMPLOYEE", "OWNER"]),
 }).refine((data) => !!(data.identifier || data.phone), {
   message: "Email or phone number is required",
 });

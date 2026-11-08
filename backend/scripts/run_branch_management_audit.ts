@@ -24,7 +24,7 @@ async function runAudit() {
   const ownerLoginRes = await fetch(`${BASE_URL}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ identifier: "owner@eyobsalon.com", password: "Owner@123" }),
+    body: JSON.stringify({ identifier: "owner@eyobsalon.com", password: "Owner@123", role: "OWNER" }),
   });
   const ownerLoginData = await ownerLoginRes.json();
   const ownerToken = ownerLoginData.data?.tokens?.accessToken || ownerLoginData.data?.accessToken;
@@ -37,7 +37,7 @@ async function runAudit() {
   const boleLoginRes = await fetch(`${BASE_URL}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ identifier: "admin.bole@eyobsalon.com", password: "Admin@123" }),
+    body: JSON.stringify({ identifier: "admin.bole@eyobsalon.com", password: "Admin@123", role: "BRANCH_ADMIN" }),
   });
   const boleLoginData = await boleLoginRes.json();
   const boleAdminToken = boleLoginData.data?.tokens?.accessToken || boleLoginData.data?.accessToken;

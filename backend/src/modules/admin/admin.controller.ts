@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import prisma from "../../utils/prisma";
 import { hashPassword } from "../../utils/password";
+import { logger } from "../../utils/logger";
 import { NotificationService } from "../notification/notification.service";
 import { UnauthorizedError } from "../../errors/AppError";
 
@@ -444,7 +445,7 @@ export class AdminController {
    * POST /api/v1/admin/governance/:id/review
    * Review governance proposal (Owner only)
    */
-  static async reviewGovernanceRequest(req: Request, res: Response, next: NextFunction) {
+  static async reviewGovernanceRequest(req: Request, res: Response, _next: NextFunction) {
     try {
       if (!req.user) throw new UnauthorizedError();
       const id = req.params.id as string;
@@ -481,7 +482,11 @@ export class AdminController {
         return;
       }
 
-      const payload = govRequest.payload as Record<string, any>;
+      const payload: Record<string, any> =
+        typeof govRequest.payload === "string"
+          ? JSON.parse(govRequest.payload)
+          : (govRequest.payload as Record<string, any> || {});
+
       const newStatus = isApprove ? "APPROVED" : "REJECTED";
 
       // 1. Update the governance request record
@@ -507,6 +512,10 @@ export class AdminController {
             data: { approvalStatus: "APPROVED" },
           });
         } else if (govRequest.type === "PRICE_UPDATE" && payload?.serviceId) {
+          const customPrice = Number(payload.customPrice);
+          const customDurationMinutes = payload.customDurationMinutes ? Number(payload.customDurationMinutes) : null;
+          const depositValue = payload.depositValue !== undefined && payload.depositValue !== null ? Number(payload.depositValue) : null;
+
           // Upsert branch price
           await prisma.branchServicePrice.upsert({
             where: {
@@ -516,19 +525,19 @@ export class AdminController {
               },
             },
             update: {
-              customPrice: payload.customPrice,
-              customDurationMinutes: payload.customDurationMinutes ?? undefined,
-              depositType: payload.depositType ?? undefined,
-              depositValue: payload.depositValue ?? undefined,
+              customPrice,
+              customDurationMinutes,
+              depositType: payload.depositType || null,
+              depositValue,
               isActive: true,
             },
             create: {
               branchId: govRequest.branchId,
               serviceId: payload.serviceId,
-              customPrice: payload.customPrice,
-              customDurationMinutes: payload.customDurationMinutes ?? null,
-              depositType: payload.depositType ?? null,
-              depositValue: payload.depositValue ?? null,
+              customPrice,
+              customDurationMinutes,
+              depositType: payload.depositType || null,
+              depositValue,
               isActive: true,
             },
           });
@@ -538,9 +547,25 @@ export class AdminController {
             data: {
               serviceId: payload.serviceId,
               branchId: govRequest.branchId,
-              price: payload.customPrice,
-              changedBy: govRequest.requestedBy,
-              reason: `Approved branch proposal: ${govRequest.reason}`,
+              price: customPrice,
+              changedBy: req.user.id,
+              reason: `Approved branch proposal: ${govRequest.reason || "Price override"}`,
+            },
+          });
+        } else if (govRequest.type === "BRANCH_SERVICE_DEACTIVATION" && payload?.serviceId) {
+          await prisma.branchServicePrice.upsert({
+            where: {
+              branchId_serviceId: {
+                branchId: govRequest.branchId,
+                serviceId: payload.serviceId,
+              },
+            },
+            update: { isActive: false },
+            create: {
+              branchId: govRequest.branchId,
+              serviceId: payload.serviceId,
+              customPrice: payload.customPrice ? Number(payload.customPrice) : 0,
+              isActive: false,
             },
           });
         }
@@ -572,6 +597,13 @@ export class AdminController {
         notifMessage = isApprove
           ? `Your price request for ${serviceName} was approved: ${reviewNote || "Approved by Owner"}`
           : `Your price request for ${serviceName} was declined: ${reviewNote || govRequest.reason}`;
+      } else if (govRequest.type === "BRANCH_SERVICE_DEACTIVATION" && payload?.serviceId) {
+        const targetService = await prisma.service.findUnique({ where: { id: payload.serviceId } });
+        const serviceName = targetService?.name || "service";
+        notifTitle = isApprove ? "Deactivation Approved / ጸድቋል" : "Deactivation Declined / ውድቅ ተደርጓል";
+        notifMessage = isApprove
+          ? `Your deactivation request for ${serviceName} at ${govRequest.branch.name} was approved.`
+          : `Your deactivation request for ${serviceName} was declined: ${reviewNote || govRequest.reason}`;
       }
 
       await NotificationService.createNotification({
@@ -588,8 +620,12 @@ export class AdminController {
         message: `Governance request ${newStatus.toLowerCase()} successfully`,
         data: updatedRequest,
       });
-    } catch (err) {
-      next(err);
+    } catch (err: any) {
+      logger.error({ err }, "Governance review failed");
+      res.status(500).json({
+        success: false,
+        message: err?.message || "Failed to process governance review",
+      });
     }
   }
 }

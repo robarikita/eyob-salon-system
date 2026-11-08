@@ -63,6 +63,7 @@ async function runAudit() {
     const ownerLogin = await postJson("/auth/login", {
       identifier: "owner@eyobsalon.com",
       password: "Owner@123",
+      role: "OWNER",
     });
     const ownerToken = ownerLogin.data.data?.tokens?.accessToken || ownerLogin.data.data?.accessToken;
     if (!ownerToken) throw new Error("Owner login failed");
@@ -73,6 +74,7 @@ async function runAudit() {
     const adminLogin = await postJson("/auth/login", {
       identifier: "admin.bole@eyobsalon.com",
       password: "Admin@123",
+      role: "BRANCH_ADMIN",
     });
     const adminToken = adminLogin.data.data?.tokens?.accessToken || adminLogin.data.data?.accessToken;
     if (!adminToken) throw new Error("Branch Admin login failed");

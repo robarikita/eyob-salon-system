@@ -14,6 +14,12 @@ export const loginRateLimiter = rateLimit({
   legacyHeaders: false,
   statusCode: 429,
   validate: false,
+  skip: (req: Request) => {
+    if (process.env.NODE_ENV !== "production" && !req.headers["x-test-ip"]) {
+      return true;
+    }
+    return false;
+  },
   keyGenerator: (req: Request) => {
     return (req.headers["x-test-ip"] as string) || (req.headers["x-forwarded-for"] as string) || req.ip || "127.0.0.1";
   },

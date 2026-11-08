@@ -82,8 +82,8 @@ export const LoginPage: React.FC = () => {
       const cleanId = identifier.trim();
       const isPhoneOnly = /^(\+251|0)?9\d{8}$/.test(cleanId.replace(/\s+/g, ''));
       const payload = isPhoneOnly
-        ? { phone: cleanId, password }
-        : { identifier: cleanId, password };
+        ? { phone: cleanId, password, role: selectedRole }
+        : { identifier: cleanId, password, role: selectedRole };
 
       const { user, tokens } = await authApi.login(payload);
       login(user, tokens.accessToken);
