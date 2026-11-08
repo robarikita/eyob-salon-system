@@ -23,12 +23,12 @@ export class EmployeeController {
 
   static async getAllEmployees(req: Request, res: Response, next: NextFunction) {
     try {
-      if (!req.user) throw new UnauthorizedError();
       const { branchId, status, search, ritualCategory } = req.query;
+      const isElevated = req.user?.role === "OWNER" || req.user?.role === "BRANCH_ADMIN";
       const employees = await EmployeeService.getEmployees(
         {
           branchId: branchId as string | undefined,
-          status: status !== undefined ? status === "true" || status === "1" : undefined,
+          status: status !== undefined ? status === "true" || status === "1" : (isElevated ? undefined : true),
           search: search as string | undefined,
           ritualCategory: ritualCategory as string | undefined,
         },

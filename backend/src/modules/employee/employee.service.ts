@@ -36,11 +36,11 @@ export class EmployeeService {
    * Strip sensitive financial compensation data (baseSalary, commissionRate)
    * unless caller is OWNER or the employee viewing their own profile.
    */
-  private static sanitizeFinancialData(employee: any, currentUser: CurrentUser): any {
+  private static sanitizeFinancialData(employee: any, currentUser?: CurrentUser): any {
     if (!employee) return employee;
-    const isOwner = currentUser.role === "OWNER";
+    const isOwner = currentUser?.role === "OWNER";
     const isSelf =
-      currentUser.role === "EMPLOYEE" &&
+      currentUser?.role === "EMPLOYEE" &&
       (employee.userId === currentUser.id || employee.id === currentUser.id);
 
     if (isOwner || isSelf) {
@@ -179,9 +179,9 @@ export class EmployeeService {
       search?: string;
       ritualCategory?: string;
     },
-    currentUser: CurrentUser
+    currentUser?: CurrentUser
   ) {
-    if (currentUser.role === "BRANCH_ADMIN") {
+    if (currentUser?.role === "BRANCH_ADMIN") {
       if (filter.branchId && filter.branchId !== "all" && filter.branchId !== currentUser.branchId) {
         throw new ForbiddenError("Forbidden: You do not have access to view employees outside your assigned branch.");
       }
@@ -189,7 +189,7 @@ export class EmployeeService {
 
     let effectiveBranchId = filter.branchId;
 
-    if (currentUser.role === "BRANCH_ADMIN") {
+    if (currentUser?.role === "BRANCH_ADMIN") {
       effectiveBranchId = currentUser.branchId || undefined;
     } else if (effectiveBranchId === "all") {
       effectiveBranchId = undefined;

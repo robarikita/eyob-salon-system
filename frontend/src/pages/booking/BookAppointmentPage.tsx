@@ -2,24 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { serviceApi, ServiceRitual } from '../../api/serviceApi';
 import { branchApi, BranchDTO } from '../../api/branchApi';
+import { employeeApi, Employee } from '../../api/employeeApi';
 import { useAuth } from '../../context/AuthContext';
-import { useLanguage } from '../../context/LanguageContext';
 import { LanguageToggle } from '../../components/common/LanguageToggle';
 
 export interface SpecialistOption {
   id: string;
   name: string;
   role: string;
-  rating?: number;
   initials: string;
-  bio?: string;
 }
 
 export const BookAppointmentPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, isAuthenticated, logout } = useAuth();
-  const { language, t } = useLanguage();
 
   const [branches, setBranches] = useState<BranchDTO[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<BranchDTO | null>(null);
@@ -29,16 +26,21 @@ export const BookAppointmentPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchRitualQuery, setSearchRitualQuery] = useState('');
-  const [dbCategories, setDbCategories] = useState<{ id: string; name: string; nameAm?: string | null; slug: string; isActive?: boolean }[]>([]);
+  const [dbCategories, setDbCategories] = useState<{ id: string; name: string; nameAm?: string | null; slug: string; isActive?: boolean; status?: string }[]>([]);
   const [selectedService, setSelectedService] = useState<ServiceRitual | null>(null);
   const [viewingRatesServiceId, setViewingRatesServiceId] = useState<string | null>(null);
-  const [selectedSpecialist, setSelectedSpecialist] = useState<SpecialistOption>({
-    id: 'any',
-    name: 'Any Available Specialist / ማንኛውም ዝግጁ ባለሙያ',
-    role: 'Optimal matching with on-duty master artisan',
-    initials: 'ANY',
-  });
 
+  const [branchEmployees, setBranchEmployees] = useState<Employee[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState<boolean>(false);
+
+  const defaultAnyOption: SpecialistOption = {
+    id: 'any',
+    name: 'Any Specialist / ማንኛውም ባለሙያ',
+    role: 'First Available / ቀዳሚ ክፍት',
+    initials: 'ANY',
+  };
+
+  const [selectedSpecialist, setSelectedSpecialist] = useState<SpecialistOption>(defaultAnyOption);
   const [pendingDraft, setPendingDraft] = useState<any | null>(null);
 
   // Check for restored pending draft
@@ -54,13 +56,18 @@ export const BookAppointmentPage: React.FC = () => {
     }
   }, []);
 
-  // Fetch dynamic categories on mount
+  // Fetch dynamic categories on mount (strictly active & approved, purging garbage)
   useEffect(() => {
     async function loadCategories() {
       try {
         const cats = await serviceApi.getCategories();
         const activeApproved = (cats || []).filter(
-          (c) => c.isActive !== false && (c.status === 'APPROVED' || !c.status)
+          (c) =>
+            c.isActive !== false &&
+            (c.status === 'APPROVED' || !c.status) &&
+            !c.name.toLowerCase().includes('test') &&
+            !c.name.includes('bbbb') &&
+            !c.name.includes('ssss')
         );
         setDbCategories(activeApproved);
       } catch (err) {
@@ -78,7 +85,6 @@ export const BookAppointmentPage: React.FC = () => {
         const activeBranches = list.filter((b) => b.isActive !== false);
         setBranches(activeBranches);
 
-        // Check query param ?branch= or restored draft
         const queryParams = new URLSearchParams(location.search);
         const branchParam = queryParams.get('branch')?.toLowerCase();
 
@@ -152,23 +158,58 @@ export const BookAppointmentPage: React.FC = () => {
     fetchServices();
   }, [selectedBranch]);
 
-  // 3. Build dynamic category pills
-  const categoryPills: { id: string; label: string }[] = [
-    { id: 'All', label: language === 'am' ? 'ሁሉም' : 'All' },
-    ...dbCategories.map((c) => ({
-      id: c.slug || c.id,
-      label: (language === 'am' && c.nameAm) ? c.nameAm : c.name,
-    })),
+  // 3. Fetch real specialists for the selected branch from PostgreSQL
+  useEffect(() => {
+    if (!selectedBranch) return;
+
+    async function fetchSpecialists() {
+      try {
+        setLoadingEmployees(true);
+        const emps = await employeeApi.getAllEmployees({ branchId: selectedBranch!.id });
+        setBranchEmployees(emps.filter((e) => e.status !== false));
+      } catch (err) {
+        console.error('Failed to fetch specialists from DB:', err);
+        setBranchEmployees([]);
+      } finally {
+        setLoadingEmployees(false);
+      }
+    }
+    fetchSpecialists();
+  }, [selectedBranch]);
+
+  // Dynamic specialist list with zero mock bios and zero fake stars
+  const specialistOptions: SpecialistOption[] = [
+    defaultAnyOption,
+    ...branchEmployees.map((emp) => {
+      const name = emp.amharicName
+        ? `${emp.firstName} ${emp.lastName} / ${emp.amharicName}`
+        : `${emp.firstName} ${emp.lastName}`.trim();
+      const initials = `${emp.firstName?.[0] || 'S'}${emp.lastName?.[0] || 'P'}`.toUpperCase();
+      const role = emp.ritualTitle || 'Stylist / ባለሙያ';
+      return {
+        id: emp.id,
+        name,
+        role,
+        initials,
+      };
+    }),
   ];
 
-  // Include any categories present on live services that aren't yet in dbCategories
-  const knownCatIds = new Set(categoryPills.map((p) => p.id.toLowerCase()));
-  services.forEach((s) => {
-    if (s.category && !knownCatIds.has(s.category.toLowerCase())) {
-      knownCatIds.add(s.category.toLowerCase());
-      categoryPills.push({ id: s.category, label: s.category });
+  // Reset specialist if current specialist is not in selected branch
+  useEffect(() => {
+    if (selectedSpecialist.id !== 'any' && !branchEmployees.some((e) => e.id === selectedSpecialist.id)) {
+      setSelectedSpecialist(defaultAnyOption);
     }
-  });
+  }, [branchEmployees]);
+
+  // Dynamic clean category pills
+  const categoryPills: { id: string; label: string }[] = [
+    { id: 'All', label: 'All / ሁሉም' },
+    ...dbCategories.map((c) => ({
+      id: c.slug || c.id,
+      label: c.nameAm ? `${c.name} / ${c.nameAm}` : c.name,
+    })),
+  ];
 
   const filteredServices = services.filter((s) => {
     // Exclude services if associated category is deactivated
@@ -187,64 +228,19 @@ export const BookAppointmentPage: React.FC = () => {
       if (!matchesCategory) return false;
     }
 
-    // Live search filter across name, Amharic name, description, code
+    // Search filter across ritual name, Amharic title, code
     if (searchRitualQuery.trim()) {
       const q = searchRitualQuery.trim().toLowerCase();
       const nameMatch = s.name?.toLowerCase().includes(q);
       const nameAmMatch = (s.nameAm || s.amharicName)?.toLowerCase().includes(q);
-      const descMatch = (s.description || s.descriptionAm)?.toLowerCase().includes(q);
       const codeMatch = s.code?.toLowerCase().includes(q);
-      if (!nameMatch && !nameAmMatch && !descMatch && !codeMatch) {
+      if (!nameMatch && !nameAmMatch && !codeMatch) {
         return false;
       }
     }
 
     return true;
   });
-
-  // Dynamic specialists derived from current service or default options
-  const specialistOptions: SpecialistOption[] = [
-    {
-      id: 'any',
-      name: language === 'am' ? 'ማንኛውም ዝግጁ ባለሙያ' : 'Any Available Specialist',
-      role: language === 'am' ? 'የመጀመሪያ ክፍት ሰዓት' : 'First open master slot',
-      initials: 'ANY',
-      rating: 4.95,
-      bio: language === 'am' ? 'ከወቅቱ ባለሙያ ጋር የሚጣጣም' : 'Optimal on-duty master matching',
-    },
-    ...(selectedService?.assignedEmployees && selectedService.assignedEmployees.length > 0
-      ? selectedService.assignedEmployees.map((e) => {
-          const emp = e.employee;
-          const name = emp.fullName || `${emp.firstName || ''} ${emp.lastName || ''}`.trim() || 'Master Artisan';
-          const initials = `${emp.firstName?.[0] || 'M'}${emp.lastName?.[0] || 'A'}`.toUpperCase();
-          return {
-            id: emp.id,
-            name: emp.amharicName && language === 'am' ? emp.amharicName : name,
-            role: emp.ritualTitle || (language === 'am' ? 'የውበት ባለሙያ' : 'Beauty Artisan'),
-            initials,
-            rating: emp.rating || 4.96,
-            bio: language === 'am' ? 'የተረጋገጠ የውበት ባለሙያ' : 'Verified master cosmetologist',
-          };
-        })
-      : [
-          {
-            id: 'sara-ahmed',
-            name: 'Sara Ahmed',
-            role: language === 'am' ? 'ዋና የፀጉር ባለሙያ' : 'Senior Hair Stylist',
-            initials: 'SA',
-            rating: 4.96,
-            bio: language === 'am' ? 'የሙሽራ ዝግጅት ባለሙያ' : 'Haute bridal styling artisan',
-          },
-          {
-            id: 'helen-tesfaye',
-            name: 'Helen Tesfaye',
-            role: language === 'am' ? 'የቆዳ እና የውበት ባለሙያ' : 'Dermal Therapist',
-            initials: 'HT',
-            rating: 4.98,
-            bio: language === 'am' ? 'የፊት ህክምና ባለሙያ' : 'Master skin aesthetician',
-          },
-        ]),
-  ];
 
   const handleContinue = () => {
     if (!selectedService || !selectedBranch) return;
@@ -279,21 +275,21 @@ export const BookAppointmentPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#FAF7F2] text-[#1C1C19] flex flex-col font-sans selection:bg-[#D4AF37] selection:text-[#0E0B09]">
-      {/* 1. Sanctuary Header */}
+      {/* 1. Header */}
       <header className="bg-[#0E0B09] text-[#FAF7F2] border-b border-[#2C2724] px-4 lg:px-12 py-4 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-6">
           <Link to="/" className="text-xl font-serif tracking-widest text-[#D4AF37] font-bold">
-            EYOB <span className="text-xs uppercase tracking-normal font-sans text-stone-400 block -mt-1">Sanctuary & Spa</span>
+            EYOB <span className="text-xs uppercase tracking-normal font-sans text-stone-400 block -mt-1">Salon & Spa</span>
           </Link>
 
           {selectedBranch && (
             <button
               onClick={() => setShowBranchModal(true)}
-              className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded bg-[#181412] border border-[#3E342F] text-xs text-[#FAF7F2] hover:border-[#D4AF37] transition"
+              className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded bg-[#181412] border border-[#3E342F] text-xs text-[#FAF7F2] hover:border-[#D4AF37] transition cursor-pointer"
             >
               <span className="material-symbols-outlined text-xs text-[#D4AF37]">location_on</span>
               <span>{selectedBranch.name}</span>
-              <span className="text-[#D4AF37] text-[10px] ml-1 font-semibold">{t('book.changeBranch')}</span>
+              <span className="text-[#D4AF37] text-[10px] ml-1 font-semibold">Change / ቀይር</span>
             </button>
           )}
         </div>
@@ -303,7 +299,7 @@ export const BookAppointmentPage: React.FC = () => {
 
           <Link to="/my-bookings" className="hover:text-[#D4AF37] transition flex items-center gap-1.5 text-stone-300">
             <span className="material-symbols-outlined text-sm text-[#D4AF37]">bookmark_heart</span>
-            <span className="hidden md:inline">{t('nav.myBookings')}</span>
+            <span className="hidden md:inline">Bookings / ቀጠሮዎች</span>
           </Link>
 
           {isAuthenticated ? (
@@ -326,8 +322,8 @@ export const BookAppointmentPage: React.FC = () => {
                   logout();
                   navigate('/login');
                 }}
-                className="text-[11px] text-red-400 hover:text-red-300 p-1 rounded border border-red-900/50 hover:bg-red-950/30 flex items-center transition"
-                title={t('actions.signOut')}
+                className="text-[11px] text-red-400 hover:text-red-300 p-1 rounded border border-red-900/50 hover:bg-red-950/30 flex items-center transition cursor-pointer"
+                title="Sign Out / ውጣ"
               >
                 <span className="material-symbols-outlined text-sm">logout</span>
               </button>
@@ -338,13 +334,13 @@ export const BookAppointmentPage: React.FC = () => {
               className="flex items-center gap-1 text-xs font-semibold text-[#D4AF37] px-3 py-1.5 rounded bg-[#181412] border border-[#D4AF37]/30 hover:border-[#D4AF37] transition"
             >
               <span className="material-symbols-outlined text-sm">login</span>
-              <span>{t('auth.signIn')}</span>
+              <span>Sign In / ግባ</span>
             </Link>
           )}
         </nav>
       </header>
 
-      {/* 2. Restored Pending Draft Notice (if applicable) */}
+      {/* 2. Pending Draft Banner */}
       {pendingDraft && (
         <div className="bg-[#181412] text-[#FAF7F2] border-b border-[#D4AF37]/40 px-4 lg:px-12 py-3">
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
@@ -352,23 +348,23 @@ export const BookAppointmentPage: React.FC = () => {
               <span className="material-symbols-outlined text-lg text-[#D4AF37]">history_edu</span>
               <div>
                 <strong className="text-[#D4AF37] block sm:inline mr-2">
-                  {t('book.restoredDraft')}:
+                  Draft / የቀጠለ:
                 </strong>
                 <span className="text-stone-300">
-                  {pendingDraft.service?.name} ({pendingDraft.branch?.name}) • {pendingDraft.selectedDate?.dateStr} @ {pendingDraft.slot}
+                  {pendingDraft.service?.name} ({pendingDraft.branch?.name})
                 </span>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={handleResumePendingDraft}
-                className="px-4 py-1.5 rounded bg-[#D4AF37] text-black font-semibold text-xs uppercase tracking-wider hover:bg-[#c29e2f] transition"
+                className="px-4 py-1.5 rounded bg-[#D4AF37] text-black font-semibold text-xs uppercase tracking-wider hover:bg-[#c29e2f] transition cursor-pointer"
               >
-                {t('book.finishBooking')}
+                Resume / ቀጥል
               </button>
               <button
                 onClick={handleDismissDraft}
-                className="text-stone-400 hover:text-stone-200 text-xs px-2 py-1"
+                className="text-stone-400 hover:text-stone-200 text-xs px-2 py-1 cursor-pointer"
               >
                 ✕
               </button>
@@ -377,24 +373,20 @@ export const BookAppointmentPage: React.FC = () => {
         </div>
       )}
 
-      {/* 3. Step Progress Bar */}
+      {/* 3. Steps Progress Bar */}
       <div className="bg-[#181412] text-[#FAF7F2] border-b border-[#2C2724] px-4 lg:px-12 py-3">
-        <div className="max-w-7xl mx-auto flex items-center justify-between text-xs">
-          <div className="flex items-center gap-2 text-[#D4AF37] font-semibold">
+        <div className="max-w-7xl mx-auto flex items-center justify-between text-xs font-semibold">
+          <div className="flex items-center gap-2 text-[#D4AF37]">
             <span className="w-5 h-5 rounded-full bg-[#D4AF37] text-[#0E0B09] flex items-center justify-center text-[11px] font-bold">1</span>
-            <span>{t('book.step1')}</span>
+            <span>Services / አገልግሎት</span>
           </div>
           <div className="flex items-center gap-2 text-stone-500">
             <span className="w-5 h-5 rounded-full bg-[#2C2724] flex items-center justify-center text-[11px]">2</span>
-            <span className="hidden sm:inline">{t('book.step2')}</span>
+            <span className="hidden sm:inline">Schedule / ሰዓት</span>
           </div>
           <div className="flex items-center gap-2 text-stone-500">
             <span className="w-5 h-5 rounded-full bg-[#2C2724] flex items-center justify-center text-[11px]">3</span>
-            <span className="hidden sm:inline">{t('book.step3')}</span>
-          </div>
-          <div className="flex items-center gap-2 text-stone-500">
-            <span className="w-5 h-5 rounded-full bg-[#2C2724] flex items-center justify-center text-[11px]">4</span>
-            <span className="hidden sm:inline">{t('book.step4')}</span>
+            <span className="hidden sm:inline">Review / ማጠቃለያ</span>
           </div>
         </div>
       </div>
@@ -403,22 +395,22 @@ export const BookAppointmentPage: React.FC = () => {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 lg:px-8 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Left Column: Selection Area (8 cols) */}
         <div className="lg:col-span-8 space-y-10">
-          {/* Section A: Curated Rituals */}
+          {/* Section A: Services */}
           <section>
             <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-4 pb-2 border-b border-[#E5E2DD]">
               <div>
-                <span className="text-[11px] uppercase tracking-widest text-[#775A00] font-bold block mb-1">
-                  Sanctuary Menu
+                <span className="text-[10px] uppercase tracking-widest text-[#775A00] font-bold block mb-0.5">
+                  Menu / ዝርዝር
                 </span>
                 <h1 className="text-2xl lg:text-3xl font-serif text-[#1C1C19] font-bold">
-                  {t('book.selectRitual')}
+                  Services / አገልግሎቶች
                 </h1>
               </div>
               {selectedBranch && (
                 <button
                   type="button"
                   onClick={() => setShowBranchModal(true)}
-                  className="text-xs text-[#775A00] hover:underline font-semibold flex items-center gap-1 mt-2 sm:mt-0"
+                  className="text-xs text-[#775A00] hover:underline font-semibold flex items-center gap-1 mt-2 sm:mt-0 cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-sm">store</span>
                   <span>{selectedBranch.name}</span>
@@ -426,7 +418,7 @@ export const BookAppointmentPage: React.FC = () => {
               )}
             </div>
 
-            {/* Luxury Live Service Search Bar */}
+            {/* Minimalist Live Search Bar */}
             <div className="relative mb-4">
               <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 text-lg">
                 search
@@ -435,27 +427,27 @@ export const BookAppointmentPage: React.FC = () => {
                 type="text"
                 value={searchRitualQuery}
                 onChange={(e) => setSearchRitualQuery(e.target.value)}
-                placeholder="Search rituals... / አገልግሎት ይፈልጉ..."
-                className="w-full bg-white border border-[#E5E2DD] rounded-xl pl-11 pr-10 py-3 text-sm text-[#1C1C19] placeholder:text-stone-400 focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] shadow-sm transition"
+                placeholder="Search / ፈልግ..."
+                className="w-full bg-white border border-[#E5E2DD] rounded-xl pl-11 pr-10 py-2.5 text-sm text-[#1C1C19] placeholder:text-stone-400 focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] shadow-sm transition"
               />
               {searchRitualQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchRitualQuery('')}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 p-1 text-xs"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 p-1 text-xs cursor-pointer"
                 >
                   ✕
                 </button>
               )}
             </div>
 
-            {/* Category Pills */}
+            {/* Clean Category Tabs */}
             <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-6 scrollbar-none">
               {categoryPills.map((cat) => (
                 <button
                   key={cat.id}
                   onClick={() => setSelectedCategory(cat.id)}
-                  className={`px-4 py-1.5 rounded text-xs whitespace-nowrap transition font-medium ${
+                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition font-semibold ${
                     selectedCategory === cat.id
                       ? 'bg-[#31302D] text-[#FAF7F2] shadow-sm'
                       : 'bg-[#EBE8E3] text-stone-700 hover:bg-[#DDD8D0]'
@@ -470,11 +462,11 @@ export const BookAppointmentPage: React.FC = () => {
             {loading ? (
               <div className="py-16 text-center text-stone-500 flex flex-col items-center gap-3">
                 <div className="w-8 h-8 border-2 border-[#D4AF37] border-t-transparent rounded-full animate-spin" />
-                <span className="text-xs tracking-wider uppercase">Loading live rituals...</span>
+                <span className="text-xs tracking-wider uppercase">Loading / በመጫን ላይ...</span>
               </div>
             ) : filteredServices.length === 0 ? (
-              <div className="py-12 text-center text-sm text-stone-500 bg-white rounded-xl border border-[#E5E2DD] p-6">
-                No active rituals available in this category for {selectedBranch?.name}.
+              <div className="py-12 text-center text-xs text-stone-500 bg-white rounded-xl border border-[#E5E2DD] p-6">
+                No active services available / ምንም አገልግሎት የለም
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -484,8 +476,12 @@ export const BookAppointmentPage: React.FC = () => {
                   const duration = srv.effectiveDuration !== undefined ? srv.effectiveDuration : srv.durationMinutes;
                   const isUnavailableAtBranch = srv.available === false || srv.isAvailable === false || srv.isAvailableAtSelectedBranch === false;
 
+                  const displayName = (srv.nameAm || srv.amharicName)
+                    ? `${srv.name} / ${srv.nameAm || srv.amharicName}`
+                    : srv.name;
+
                   return (
-                    <div
+                    <article
                       key={srv.id}
                       onClick={() => setSelectedService(srv)}
                       className={`cursor-pointer rounded-xl p-4 border transition-all duration-300 relative flex flex-col justify-between shadow-md ${
@@ -495,13 +491,14 @@ export const BookAppointmentPage: React.FC = () => {
                       }`}
                     >
                       <div>
-                        {/* Real Cloudinary / Database Image Banner with Aspect-Video */}
+                        {/* Aspect-Video Image Banner with Gradient Fallback */}
                         <div className="w-full aspect-video rounded-lg mb-3 overflow-hidden bg-gradient-to-br from-[#181412] to-[#2C2724] relative border border-[#2C2724]">
                           {srv.imageUrl ? (
                             <img
                               src={srv.imageUrl}
                               alt={srv.name}
                               className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
+                              loading="lazy"
                             />
                           ) : (
                             <div className="w-full h-full flex flex-col items-center justify-center text-[#D4AF37]/60">
@@ -516,6 +513,7 @@ export const BookAppointmentPage: React.FC = () => {
                           )}
                         </div>
 
+                        {/* Category Pill & Selection Indicator */}
                         <div className="flex items-start justify-between gap-2 mb-1.5">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-[#D4AF37] bg-[#0E0B09] px-2 py-0.5 rounded border border-[#2C2724]">
                             {srv.category?.split('&')[0]?.trim() || srv.code}
@@ -527,26 +525,21 @@ export const BookAppointmentPage: React.FC = () => {
                           )}
                         </div>
 
-                        <h3 className="font-serif text-base font-bold text-[#FAF7F2] leading-tight mb-0.5">
-                          {srv.name}
+                        {/* Service Title: Strictly bilingual name, NO description block */}
+                        <h3 className="font-serif text-base font-bold text-[#FAF7F2] leading-tight mb-1">
+                          {displayName}
                         </h3>
-                        {(srv.nameAm || srv.amharicName) && (
-                          <p className="text-xs font-serif text-stone-400 mb-2">{srv.nameAm || srv.amharicName}</p>
-                        )}
-                        {srv.description && (
-                          <p className="text-xs text-stone-400 line-clamp-2 mb-3">{srv.description}</p>
-                        )}
 
                         {/* Branch Inactivity & Alternate Branch Suggestions Alert */}
                         {isUnavailableAtBranch && (
                           <div className="mb-3 p-2.5 rounded-lg bg-amber-950/30 border border-amber-900/40 text-xs">
                             <div className="flex items-center gap-1 font-semibold text-amber-400 mb-1">
                               <span className="material-symbols-outlined text-xs">info</span>
-                              <span>Unavailable at {selectedBranch?.name} / በዚህ ቅርንጫፍ አይሰጥም</span>
+                              <span>Unavailable / በዚህ ቅርንጫፍ የለም</span>
                             </div>
                             {srv.alternateBranches && srv.alternateBranches.length > 0 ? (
                               <div className="mt-1.5">
-                                <span className="text-[10px] text-amber-300 block mb-1">Book at alternate branch / በዚህ ቅርንጫፍ ይያዙ:</span>
+                                <span className="text-[10px] text-amber-300 block mb-1">Alternate Branch / ሌላ ቅርንጫፍ:</span>
                                 <div className="flex flex-wrap gap-1">
                                   {srv.alternateBranches.map((alt) => (
                                     <button
@@ -568,12 +561,13 @@ export const BookAppointmentPage: React.FC = () => {
                                 </div>
                               </div>
                             ) : (
-                              <span className="text-[10px] text-stone-400">Currently unavailable / ለጊዜው አይሰጥም</span>
+                              <span className="text-[10px] text-stone-400">Unavailable / የለም</span>
                             )}
                           </div>
                         )}
                       </div>
 
+                      {/* Duration, Price & Action Button */}
                       <div className="flex flex-col pt-3 border-t border-[#2C2724] text-xs gap-2 mt-2">
                         <div className="flex items-center justify-between">
                           <span className="text-stone-400 flex items-center gap-1 font-medium text-[11px]">
@@ -605,7 +599,7 @@ export const BookAppointmentPage: React.FC = () => {
                           </div>
                         )}
 
-                        {/* Branch Rates Dropdown / Card */}
+                        {/* Branch Rates Dropdown */}
                         {viewingRatesServiceId === srv.id && srv.branchPricings && (
                           <div
                             onClick={(e) => e.stopPropagation()}
@@ -651,56 +645,77 @@ export const BookAppointmentPage: React.FC = () => {
                           {isSelected ? 'Selected / ተመርጧል ✓' : 'Select / ምረጥ'}
                         </button>
                       </div>
-                    </div>
+                    </article>
                   );
                 })}
               </div>
             )}
           </section>
 
-          {/* Section B: Master Specialist Selection */}
+          {/* Section B: Specialists (Database-Only) */}
           <section className="pt-6 border-t border-[#E5E2DD]">
             <div className="mb-4">
-              <span className="text-[11px] uppercase tracking-widest text-[#775A00] font-bold block mb-1">
-                Artisan Cosmetologists
+              <span className="text-[10px] uppercase tracking-widest text-[#775A00] font-bold block mb-0.5">
+                Staff / ባለሙያዎች
               </span>
               <h2 className="text-2xl font-serif text-[#1C1C19] font-bold">
-                {t('book.selectSpecialist')}
+                Specialist / ባለሙያ
               </h2>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {specialistOptions.map((sp) => {
-                const isSelected = selectedSpecialist.id === sp.id;
-                return (
-                  <div
-                    key={sp.id}
-                    onClick={() => setSelectedSpecialist(sp)}
-                    className={`cursor-pointer rounded-xl p-4 border transition-all flex items-start gap-3 ${
-                      isSelected
-                        ? 'border-[#D4AF37] bg-white ring-2 ring-[#D4AF37]/50 shadow-md'
-                        : 'border-[#E5E2DD] bg-white hover:border-[#D4AF37]/60'
-                    }`}
-                  >
-                    <div className="w-12 h-12 rounded-full bg-[#181412] text-[#D4AF37] flex-shrink-0 flex items-center justify-center font-bold text-sm border border-[#D4AF37]/40">
-                      {sp.initials}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-0.5">
-                        <h4 className="font-bold text-sm text-[#1C1C19] truncate">{sp.name}</h4>
-                        {sp.rating && (
-                          <span className="text-xs text-[#D4AF37] flex items-center gap-0.5 font-semibold">
-                            ★ {sp.rating}
+            {loadingEmployees ? (
+              <div className="py-8 text-center text-stone-500 text-xs">
+                <span className="material-symbols-outlined text-lg animate-spin text-[#D4AF37] mb-1 block">
+                  sync
+                </span>
+                Loading Specialists / በመጫን ላይ...
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {specialistOptions.map((sp) => {
+                  const isSelected = selectedSpecialist.id === sp.id;
+                  const isAny = sp.id === 'any';
+
+                  return (
+                    <div
+                      key={sp.id}
+                      onClick={() => setSelectedSpecialist(sp)}
+                      className={`cursor-pointer rounded-xl p-4 border transition-all duration-200 flex items-center justify-between ${
+                        isSelected
+                          ? 'border-[#D4AF37] bg-white ring-2 ring-[#D4AF37]/50 shadow-md'
+                          : 'border-[#E5E2DD] bg-white hover:border-[#D4AF37]/60'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-11 h-11 rounded-full bg-[#181412] text-[#D4AF37] flex-shrink-0 flex items-center justify-center font-bold text-xs border border-[#D4AF37]/40">
+                          {isAny ? (
+                            <span className="material-symbols-outlined text-[18px]">group</span>
+                          ) : (
+                            sp.initials
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="font-bold text-sm text-[#1C1C19] truncate">{sp.name}</h4>
+                          <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold mt-0.5 ${
+                            isAny
+                              ? 'bg-[#D4AF37]/20 text-[#775A00] border border-[#D4AF37]/40'
+                              : 'bg-stone-100 text-stone-600'
+                          }`}>
+                            {sp.role}
                           </span>
-                        )}
+                        </div>
                       </div>
-                      <p className="text-xs text-[#775A00] font-medium leading-tight mb-1">{sp.role}</p>
-                      {sp.bio && <p className="text-[11px] text-stone-500 line-clamp-1">{sp.bio}</p>}
+
+                      {isSelected && (
+                        <span className="text-[#D4AF37] material-symbols-outlined text-lg flex-shrink-0">
+                          check_circle
+                        </span>
+                      )}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </section>
         </div>
 
@@ -708,72 +723,72 @@ export const BookAppointmentPage: React.FC = () => {
         <div className="lg:col-span-4">
           <div className="bg-[#181412] text-[#FAF7F2] rounded-xl p-6 border border-[#2C2724] sticky top-24 shadow-xl">
             <span className="text-[10px] uppercase tracking-widest text-[#D4AF37] font-bold block mb-1">
-              Reservation Dossier
+              Summary / ማጠቃለያ
             </span>
             <h3 className="font-serif text-xl font-bold text-[#FAF7F2] mb-4 pb-3 border-b border-[#2C2724]">
-              {t('book.step3')}
+              Summary / ማጠቃለያ
             </h3>
 
-            {/* Selected Branch */}
-            <div className="mb-4 text-xs">
-              <span className="text-stone-400 block mb-0.5">{t('book.selectBranch')}</span>
-              <div className="flex items-center justify-between font-medium">
-                <span className="text-[#FAF7F2] font-semibold">{selectedBranch?.name || 'Loading...'}</span>
-                <button
-                  onClick={() => setShowBranchModal(true)}
-                  className="text-[#D4AF37] hover:underline text-[11px] cursor-pointer"
-                >
-                  {t('book.changeBranch')}
-                </button>
-              </div>
-            </div>
-
-            {/* Selected Service */}
-            {selectedService && (
-              <div className="mb-4 text-xs">
-                <span className="text-stone-400 block mb-0.5">{t('book.selectRitual')}</span>
-                <p className="text-sm font-serif font-bold text-[#FAF7F2]">{selectedService.name}</p>
-                {selectedService.amharicName && (
-                  <p className="text-xs text-stone-400 font-serif">{selectedService.amharicName}</p>
-                )}
-                <div className="flex items-center justify-between text-stone-400 mt-1">
-                  <span>
-                    Duration: {selectedService.effectiveDuration || selectedService.durationMinutes} Mins
-                  </span>
-                  <span className="text-[#D4AF37] font-bold">
-                    {Number(selectedService.effectivePrice || selectedService.basePrice).toLocaleString()} ETB
-                  </span>
+            {/* Line Items (strictly 1-2 words) */}
+            <div className="space-y-3 mb-6 text-xs">
+              {/* Branch */}
+              <div className="flex items-center justify-between pb-2 border-b border-[#2C2724]/60">
+                <span className="text-stone-400">Branch / ቅርንጫፍ</span>
+                <div className="flex items-center gap-1.5 font-semibold text-[#FAF7F2]">
+                  <span>{selectedBranch?.name || '—'}</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowBranchModal(true)}
+                    className="text-[#D4AF37] hover:underline text-[10px] cursor-pointer"
+                  >
+                    Edit / ቀይር
+                  </button>
                 </div>
               </div>
-            )}
 
-            {/* Selected Specialist */}
-            <div className="mb-6 text-xs">
-              <span className="text-stone-400 block mb-0.5">{t('book.selectSpecialist')}</span>
-              <p className="font-bold text-[#FAF7F2]">{selectedSpecialist.name}</p>
-              <p className="text-[11px] text-stone-400">{selectedSpecialist.role}</p>
-            </div>
-
-            {/* Total Tariff & Deposit Breakdown */}
-            <div className="pt-4 border-t border-[#2C2724] space-y-2 text-xs mb-6">
-              <div className="flex items-center justify-between text-stone-400">
-                <span>{t('book.totalTariff')}</span>
-                <span>
-                  {Number(selectedService?.effectivePrice || selectedService?.basePrice || 0).toLocaleString()} ETB
+              {/* Ritual */}
+              <div className="flex items-center justify-between pb-2 border-b border-[#2C2724]/60">
+                <span className="text-stone-400">Ritual / አገልግሎት</span>
+                <span className="font-semibold text-[#FAF7F2] text-right truncate max-w-[60%]">
+                  {selectedService ? selectedService.name : '—'}
                 </span>
               </div>
-              <div className="flex items-center justify-between text-stone-400">
-                <span>{t('book.deposit')}</span>
-                <span className="text-[#D4AF37] font-medium">
-                  {selectedService?.effectiveDeposit !== undefined && selectedService?.effectiveDeposit !== null
-                    ? `${Number(selectedService.effectiveDeposit).toLocaleString()} ETB`
-                    : `${Number(selectedService?.depositAmount || 0).toLocaleString()} ETB`}
+
+              {/* Duration */}
+              <div className="flex items-center justify-between pb-2 border-b border-[#2C2724]/60">
+                <span className="text-stone-400">Duration / ሰዓት</span>
+                <span className="font-semibold text-[#FAF7F2]">
+                  {selectedService
+                    ? `${selectedService.effectiveDuration || selectedService.durationMinutes} min`
+                    : '—'}
                 </span>
               </div>
-              <div className="flex items-center justify-between text-sm font-bold text-[#FAF7F2] pt-2 border-t border-[#2C2724]">
-                <span>{t('book.financialLedger')}</span>
-                <span className="text-base text-[#D4AF37]">
-                  {Number(selectedService?.effectivePrice || selectedService?.basePrice || 0).toLocaleString()} ETB
+
+              {/* Specialist */}
+              <div className="flex items-center justify-between pb-2 border-b border-[#2C2724]/60">
+                <span className="text-stone-400">Specialist / ባለሙያ</span>
+                <span className="font-semibold text-[#FAF7F2] text-right truncate max-w-[60%]">
+                  {selectedSpecialist.name.split('/')[0].trim()}
+                </span>
+              </div>
+
+              {/* Total */}
+              <div className="flex items-center justify-between pb-2 border-b border-[#2C2724]/60">
+                <span className="text-stone-400">Total / ጠቅላላ</span>
+                <span className="font-bold text-[#D4AF37] text-sm font-serif">
+                  {selectedService
+                    ? `${Number(selectedService.effectivePrice || selectedService.basePrice).toLocaleString()} ETB`
+                    : '0 ETB'}
+                </span>
+              </div>
+
+              {/* Deposit */}
+              <div className="flex items-center justify-between">
+                <span className="text-stone-400">Deposit / ቅድመ ክፍያ</span>
+                <span className="font-semibold text-[#FAF7F2]">
+                  {selectedService
+                    ? `${Number(selectedService.effectiveDeposit !== undefined && selectedService.effectiveDeposit !== null ? selectedService.effectiveDeposit : (selectedService.depositAmount || 0)).toLocaleString()} ETB`
+                    : '0 ETB'}
                 </span>
               </div>
             </div>
@@ -783,11 +798,11 @@ export const BookAppointmentPage: React.FC = () => {
               <div className="mb-4 p-3 rounded-lg bg-amber-950/60 border border-amber-600/60 text-xs text-[#FAF7F2]">
                 <div className="flex items-center gap-1.5 font-bold text-amber-400 mb-1">
                   <span className="material-symbols-outlined text-sm">warning</span>
-                  <span>Unavailable at {selectedBranch?.name} / በዚህ ቅርንጫፍ አይሰጥም</span>
+                  <span>Unavailable / በዚህ ቅርንጫፍ የለም</span>
                 </div>
                 {selectedService.alternateBranches && selectedService.alternateBranches.length > 0 ? (
                   <div>
-                    <span className="text-[10px] text-stone-300 block mb-1.5">Book at alternate branch / በዚህ ቅርንጫፍ ይያዙ:</span>
+                    <span className="text-[10px] text-stone-300 block mb-1.5">Alternate Branch / ሌላ ቅርንጫፍ:</span>
                     <div className="flex flex-wrap gap-1.5">
                       {selectedService.alternateBranches.map((alt) => (
                         <button
@@ -805,7 +820,7 @@ export const BookAppointmentPage: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  <p className="text-[10px] text-stone-400">Currently unavailable / ለጊዜው አይሰጥም</p>
+                  <p className="text-[10px] text-stone-400">Unavailable / የለም</p>
                 )}
               </div>
             )}
@@ -822,17 +837,13 @@ export const BookAppointmentPage: React.FC = () => {
               }
               className="w-full py-3.5 rounded bg-[#D4AF37] hover:bg-[#C59A3F] text-[#0E0B09] font-bold text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 cursor-pointer"
             >
-              <span>{t('book.continueSchedule')}</span>
-              <span className="material-symbols-outlined text-sm">arrow_forward</span>
+              <span>Continue / ይቀጥሉ →</span>
             </button>
             {selectedBranch?.isActive === false && (
               <p className="text-[11px] text-amber-400 font-semibold text-center mt-2">
-                Temporarily Closed / ይህ ቅርንጫፍ ለጊዜው ዝግ ነው
+                Closed / ዝግ ነው
               </p>
             )}
-            <p className="text-[10px] text-stone-400 text-center mt-3">
-              Hold secured with sanitation & master readiness protocols
-            </p>
           </div>
         </div>
       </main>
@@ -843,11 +854,11 @@ export const BookAppointmentPage: React.FC = () => {
           <div className="bg-[#181412] text-stone-200 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-[#D4AF37]/30">
             <div className="flex items-center justify-between mb-4 pb-2 border-b border-stone-800">
               <h3 className="font-serif text-lg font-bold text-[#D4AF37]">
-                {t('book.selectBranch')}
+                Branch / ቅርንጫፍ
               </h3>
               <button
                 onClick={() => setShowBranchModal(false)}
-                className="text-stone-400 hover:text-stone-100 p-1"
+                className="text-stone-400 hover:text-stone-100 p-1 cursor-pointer"
               >
                 <span className="material-symbols-outlined">close</span>
               </button>
@@ -876,7 +887,7 @@ export const BookAppointmentPage: React.FC = () => {
                         <span>{b.name}</span>
                         {isClosed && (
                           <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/90 text-amber-400 border border-amber-800/60 uppercase">
-                            Temporarily Closed / ለጊዜው ዝግ ነው
+                            Closed / ዝግ ነው
                           </span>
                         )}
                       </div>
