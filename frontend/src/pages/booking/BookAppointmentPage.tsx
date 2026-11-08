@@ -178,9 +178,15 @@ export const BookAppointmentPage: React.FC = () => {
   }, [selectedBranch]);
 
   // Dynamic specialist list with zero mock bios and zero fake stars
+  const qualifiedEmployees = branchEmployees.filter((emp) => {
+    if (!selectedService) return true;
+    if (!emp.services || emp.services.length === 0) return true;
+    return emp.services.some((s) => s.serviceId === selectedService.id);
+  });
+
   const specialistOptions: SpecialistOption[] = [
     defaultAnyOption,
-    ...branchEmployees.map((emp) => {
+    ...qualifiedEmployees.map((emp) => {
       const name = emp.amharicName
         ? `${emp.firstName} ${emp.lastName} / ${emp.amharicName}`
         : `${emp.firstName} ${emp.lastName}`.trim();
@@ -195,12 +201,12 @@ export const BookAppointmentPage: React.FC = () => {
     }),
   ];
 
-  // Reset specialist if current specialist is not in selected branch
+  // Reset specialist if current specialist is not in qualified branch specialists
   useEffect(() => {
-    if (selectedSpecialist.id !== 'any' && !branchEmployees.some((e) => e.id === selectedSpecialist.id)) {
+    if (selectedSpecialist.id !== 'any' && !qualifiedEmployees.some((e) => e.id === selectedSpecialist.id)) {
       setSelectedSpecialist(defaultAnyOption);
     }
-  }, [branchEmployees]);
+  }, [qualifiedEmployees]);
 
   // Dynamic clean category pills
   const categoryPills: { id: string; label: string }[] = [

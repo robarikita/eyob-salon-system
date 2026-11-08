@@ -181,6 +181,8 @@ model Employee {
   amharicName           String?
   phone                 String?
   email                 String?
+  photoUrl              String?
+  title                 String?
   ritualTitle           String?
   employmentType        String?
   workstation           String?
@@ -189,6 +191,7 @@ model Employee {
   emergencyContactPhone String?
   baseSalary            Decimal?  @db.Decimal(12, 2)
   commissionRate        Decimal?  @db.Decimal(5, 2)
+  isActive              Boolean   @default(true)
   status                Boolean   @default(true) // Active or Inactive
   
   // Relations
@@ -201,6 +204,7 @@ model Employee {
   schedules             EmployeeSchedule[]
   scheduleExceptions    ScheduleException[]
   bookingItems          BookingItem[]
+  bookings              Booking[] @relation("EmployeeBookings")
 
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
@@ -210,6 +214,7 @@ model EmployeeService {
   id                    String   @id @default(uuid())
   customDurationMinutes Int?
   customCommissionRate  Decimal? @db.Decimal(5, 2)
+  isQualified           Boolean  @default(true)
   
   // Relations
   employeeId            String
@@ -237,17 +242,20 @@ model EmployeeSchedule {
 }
 
 model ScheduleException {
-  id         String    @id @default(uuid())
-  date       DateTime  @db.Date
-  endDate    DateTime? @db.Date
-  reason     String?
-  startTime  String?   // Optional: If working different hours
-  endTime    String?   // Optional: If working different hours
-  isWorking  Boolean   @default(false)
+  id              String    @id @default(uuid())
+  date            DateTime  @db.Date
+  endDate         DateTime? @db.Date
+  reason          String?
+  isOff           Boolean   @default(true)
+  isWorking       Boolean   @default(false)
+  startTime       String?   // Optional: If working different hours
+  endTime         String?   // Optional: If working different hours
+  customStartTime String?
+  customEndTime   String?
 
   // Relations
-  employeeId String
-  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeId      String
+  employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }
 
 model Service {
@@ -363,6 +371,8 @@ model Booking {
   customer         User          @relation("CustomerBookings", fields: [customerId], references: [id])
   branchId         String
   branch           Branch        @relation(fields: [branchId], references: [id])
+  employeeId       String?
+  employee         Employee?     @relation("EmployeeBookings", fields: [employeeId], references: [id])
   
   items            BookingItem[]
   payments         Payment[]

@@ -16,7 +16,9 @@ router.get("/:id", authenticate, authorize("OWNER", "BRANCH_ADMIN", "EMPLOYEE"),
 router.patch("/:id", authenticate, authorize("OWNER", "BRANCH_ADMIN"), EmployeeController.updateEmployee);
 router.patch("/:id/toggle-status", authenticate, authorize("OWNER", "BRANCH_ADMIN"), EmployeeController.toggleEmployeeStatus);
 router.put("/:id/services", authenticate, authorize("OWNER", "BRANCH_ADMIN"), EmployeeController.assignServices);
+router.get("/:id/schedule", authenticate, authorize("OWNER", "BRANCH_ADMIN", "EMPLOYEE"), EmployeeController.getSchedule);
 router.put("/:id/schedule", authenticate, authorize("OWNER", "BRANCH_ADMIN"), EmployeeController.setSchedule);
 router.post("/:id/exceptions", authenticate, authorize("OWNER", "BRANCH_ADMIN"), EmployeeController.createException);
+router.delete("/:id/exceptions/:exceptionId", authenticate, authorize("OWNER", "BRANCH_ADMIN"), EmployeeController.deleteException);
 
 export default router;

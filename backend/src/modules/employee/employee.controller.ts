@@ -86,6 +86,16 @@ export class EmployeeController {
     }
   }
 
+  static async getSchedule(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) throw new UnauthorizedError();
+      const schedule = await EmployeeService.getSchedule(req.params.id as string, req.user);
+      res.status(200).json({ success: true, data: schedule });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async setSchedule(req: Request, res: Response, next: NextFunction) {
     try {
       if (!req.user) throw new UnauthorizedError();
@@ -103,6 +113,20 @@ export class EmployeeController {
       const data = createExceptionSchema.parse(req.body);
       const exception = await EmployeeService.createException(req.params.id as string, data, req.user);
       res.status(201).json({ success: true, data: exception });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async deleteException(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) throw new UnauthorizedError();
+      const result = await EmployeeService.deleteException(
+        req.params.id as string,
+        req.params.exceptionId as string,
+        req.user
+      );
+      res.status(200).json({ success: true, data: result });
     } catch (error) {
       next(error);
     }

@@ -144,6 +144,38 @@ export const employeeApi = {
     return { employee: json.data, warning: json.warning };
   },
 
+  async getSchedule(id: string): Promise<{
+    schedules: Array<{
+      id?: string;
+      dayOfWeek: number;
+      startTime: string;
+      endTime: string;
+      breakStartTime?: string | null;
+      breakEndTime?: string | null;
+      isWorking: boolean;
+    }>;
+    exceptions: Array<{
+      id: string;
+      date: string;
+      endDate?: string | null;
+      reason?: string | null;
+      isOff: boolean;
+      isWorking: boolean;
+      customStartTime?: string | null;
+      customEndTime?: string | null;
+    }>;
+  }> {
+    const res = await fetch(`/api/v1/employees/${id}/schedule`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Failed to fetch schedule');
+    }
+    const json = await res.json();
+    return json.data;
+  },
+
   async setEmployeeSchedule(
     id: string,
     schedules: Array<{
@@ -174,12 +206,13 @@ export const employeeApi = {
       serviceId: string;
       customDurationMinutes?: number;
       customCommissionRate?: number;
-    }>
+    }> | { serviceIds: string[] }
   ) {
+    const body = Array.isArray(services) ? { services } : services;
     const res = await fetch(`/api/v1/employees/${id}/services`, {
       method: 'PUT',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ services }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -192,10 +225,14 @@ export const employeeApi = {
   async createException(
     id: string,
     data: {
-      startDate: string;
+      startDate?: string;
+      date?: string;
       endDate?: string;
       reason?: string;
-      isOffDay: boolean;
+      isOff?: boolean;
+      isOffDay?: boolean;
+      startTime?: string;
+      endTime?: string;
     }
   ) {
     const res = await fetch(`/api/v1/employees/${id}/exceptions`, {
@@ -209,5 +246,62 @@ export const employeeApi = {
     }
     const json = await res.json();
     return json.data;
+  },
+
+  async deleteException(id: string, exceptionId: string): Promise<boolean> {
+    const res = await fetch(`/api/v1/employees/${id}/exceptions/${exceptionId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Failed to delete exception');
+    }
+    return true;
+  },
+};
+
+export const staffApi = {
+  async getMe(): Promise<Employee> {
+    const res = await fetch('/api/v1/staff/me', {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Failed to load staff profile');
+    }
+    const json = await res.json();
+    return json.data;
+  },
+
+  async getSchedule(): Promise<{
+    schedules: Array<any>;
+    exceptions: Array<any>;
+  }> {
+    const res = await fetch('/api/v1/staff/schedule', {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Failed to load schedule');
+    }
+    const json = await res.json();
+    return json.data;
+  },
+
+  async getAppointments(params?: { date?: string; status?: string }): Promise<any[]> {
+    const query = new URLSearchParams();
+    if (params?.date) query.append('date', params.date);
+    if (params?.status && params.status !== 'ALL') query.append('status', params.status);
+
+    const res = await fetch(`/api/v1/staff/appointments?${query.toString()}`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Failed to load appointments');
+    }
+    const json = await res.json();
+    return json.data || json.appointments || [];
   },
 };

@@ -91,9 +91,29 @@ export class BookingService {
     if (employeeId) {
       const emp = await prisma.employee.findUnique({
         where: { id: employeeId },
+        include: {
+          services: {
+            where: { serviceId: service.id, isQualified: true },
+          },
+        },
       });
-      if (!emp || emp.branchId !== branchId || !emp.status) {
+      if (!emp || emp.branchId !== branchId || !emp.status || !emp.isActive) {
         throw new NotFoundError("Specialist not found or inactive at this branch.");
+      }
+      // If specialist has configured services, check qualification
+      if (emp.services.length === 0) {
+        const totalAssigned = await prisma.employeeService.count({
+          where: { employeeId: emp.id },
+        });
+        if (totalAssigned > 0) {
+          return {
+            date,
+            branchId,
+            serviceDuration: duration,
+            turnaroundBuffer: turnaround,
+            availableSlots: [],
+          };
+        }
       }
       targetEmployeeIds = [employeeId];
     } else {
@@ -101,9 +121,11 @@ export class BookingService {
       const serviceEmployees = await prisma.employeeService.findMany({
         where: {
           serviceId: service.id,
+          isQualified: true,
           employee: {
             branchId,
             status: true,
+            isActive: true,
           },
         },
         select: { employeeId: true },
@@ -114,7 +136,7 @@ export class BookingService {
       // Fallback: If no direct service assignment, query any active specialist at this branch
       if (targetEmployeeIds.length === 0) {
         const branchEmployees = await prisma.employee.findMany({
-          where: { branchId, status: true },
+          where: { branchId, status: true, isActive: true },
           select: { id: true },
         });
         targetEmployeeIds = branchEmployees.map((e: { id: string }) => e.id);
@@ -677,20 +699,30 @@ export class BookingService {
    * Retrieve staff appointments for today or specified date
    */
   static async getStaffAppointments(currentUser: CurrentUser, dateStr?: string, status?: string) {
-    const where: any = {};
+    const andClauses: any[] = [];
 
     // 1. Employee scoping
     if (currentUser.role === "EMPLOYEE") {
       const emp = await prisma.employee.findFirst({
-        where: { userId: currentUser.id },
+        where: {
+          OR: [
+            { userId: currentUser.id },
+            ...(currentUser.phoneNumber ? [{ phone: currentUser.phoneNumber }] : []),
+          ],
+        },
       });
       if (emp) {
-        where.items = {
-          some: { employeeId: emp.id },
-        };
+        andClauses.push({
+          OR: [
+            { employeeId: emp.id },
+            { items: { some: { employeeId: emp.id } } },
+          ],
+        });
       }
     } else if (currentUser.role === "BRANCH_ADMIN") {
-      where.branchId = currentUser.branchId;
+      if (currentUser.branchId) {
+        andClauses.push({ branchId: currentUser.branchId });
+      }
     }
 
     // 2. Date filtering
@@ -698,19 +730,21 @@ export class BookingService {
       const [y, m, d] = dateStr.split("-").map(Number);
       const startOfDay = new Date(y, m - 1, d, 0, 0, 0, 0);
       const endOfDay = new Date(y, m - 1, d, 23, 59, 59, 999);
-      where.items = {
-        ...where.items,
-        some: {
-          ...(where.items?.some || {}),
-          startTime: { gte: startOfDay, lte: endOfDay },
+      andClauses.push({
+        items: {
+          some: {
+            startTime: { gte: startOfDay, lte: endOfDay },
+          },
         },
-      };
+      });
     }
 
     // 3. Status filtering
     if (status && status !== "ALL") {
-      where.status = status as BookingStatus;
+      andClauses.push({ status: status as BookingStatus });
     }
+
+    const where = andClauses.length > 0 ? { AND: andClauses } : {};
 
     const appointments = await prisma.booking.findMany({
       where,

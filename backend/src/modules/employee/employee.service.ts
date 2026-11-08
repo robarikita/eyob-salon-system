@@ -56,7 +56,9 @@ export class EmployeeService {
   /**
    * Split full name into first and last name
    */
-  private static splitName(fullName: string) {
+  private static splitName(fullName?: string, fName?: string, lName?: string) {
+    if (fName && lName) return { firstName: fName, lastName: lName };
+    if (!fullName) return { firstName: fName || "Specialist", lastName: lName || "" };
     const parts = fullName.trim().split(/\s+/);
     const firstName = parts[0];
     const lastName = parts.slice(1).join(" ") || parts[0];
@@ -78,13 +80,14 @@ export class EmployeeService {
       throw new NotFoundError("Selected branch does not exist.");
     }
 
-    const { firstName, lastName } = this.splitName(data.fullName);
+    const { firstName, lastName } = this.splitName(data.fullName, data.firstName, data.lastName);
+    const createAccount = Boolean(data.createLoginAccount || data.createPortalAccess);
 
     return prisma.$transaction(async (tx) => {
       let createdUserId: string | null = null;
 
       // Handle portal access account creation
-      if (data.createPortalAccess) {
+      if (createAccount) {
         // Check if phone or email is already taken
         const existingUserByPhone = await tx.user.findUnique({
           where: { phone: data.phone },
@@ -102,7 +105,7 @@ export class EmployeeService {
           }
         }
 
-        const rawPassword = data.tempPassword || "EyobSanctuary#2025!";
+        const rawPassword = data.password || data.tempPassword || "EyobSanctuary#2025!";
         const hashedPassword = await hashPassword(rawPassword);
 
         const newUser = await tx.user.create({
@@ -129,7 +132,9 @@ export class EmployeeService {
           phone: data.phone,
           email: data.email || null,
           branchId: data.branchId,
-          ritualTitle: data.ritualTitle || null,
+          title: data.title || data.ritualTitle || null,
+          photoUrl: data.photoUrl || null,
+          ritualTitle: data.ritualTitle || data.title || null,
           employmentType: data.employmentType || "Full-Time (40 hrs/wk)",
           workstation: data.workstation || null,
           joinedDate: data.joinedDate ? new Date(data.joinedDate) : new Date(),
@@ -137,6 +142,8 @@ export class EmployeeService {
           emergencyContactPhone: data.emergencyContactPhone || null,
           baseSalary: data.baseSalary !== undefined && data.baseSalary !== null ? data.baseSalary : null,
           commissionRate: data.commissionRate !== undefined && data.commissionRate !== null ? data.commissionRate : 15,
+          isActive: data.isActive !== undefined ? data.isActive : true,
+          status: data.isActive !== undefined ? data.isActive : true,
           userId: createdUserId,
         },
         include: {
@@ -317,9 +324,12 @@ export class EmployeeService {
     let lastName = existing.lastName;
 
     if (data.fullName) {
-      const split = this.splitName(data.fullName);
+      const split = this.splitName(data.fullName, data.firstName, data.lastName);
       firstName = split.firstName;
       lastName = split.lastName;
+    } else {
+      if (data.firstName) firstName = data.firstName;
+      if (data.lastName) lastName = data.lastName;
     }
 
     const updateData: any = {
@@ -330,6 +340,8 @@ export class EmployeeService {
       email: data.email !== undefined ? data.email : existing.email,
       branchId: data.branchId !== undefined ? data.branchId : existing.branchId,
       ritualTitle: data.ritualTitle !== undefined ? data.ritualTitle : existing.ritualTitle,
+      title: data.title !== undefined ? data.title : existing.title,
+      photoUrl: data.photoUrl !== undefined ? data.photoUrl : existing.photoUrl,
       employmentType: data.employmentType !== undefined ? data.employmentType : existing.employmentType,
       workstation: data.workstation !== undefined ? data.workstation : existing.workstation,
       emergencyContactName: data.emergencyContactName !== undefined ? data.emergencyContactName : existing.emergencyContactName,
@@ -347,8 +359,10 @@ export class EmployeeService {
     }
     if (data.status !== undefined) {
       updateData.status = data.status;
+      updateData.isActive = data.status;
     } else if (data.isActive !== undefined) {
       updateData.status = data.isActive;
+      updateData.isActive = data.isActive;
     }
 
     return prisma.employee.update({
@@ -399,7 +413,10 @@ export class EmployeeService {
 
     const updated = await prisma.employee.update({
       where: { id },
-      data: { status: newStatus },
+      data: {
+        status: newStatus,
+        isActive: newStatus,
+      },
       include: { branch: true },
     });
 
@@ -419,9 +436,17 @@ export class EmployeeService {
 
     this.checkBranchAccess(currentUser, employee.branchId);
 
+    // Normalize incoming services or serviceIds
+    const rawServices: Array<{ serviceId: string; customDurationMinutes?: number | null; customCommissionRate?: number | null }> = [];
+    if (data.serviceIds && data.serviceIds.length > 0) {
+      data.serviceIds.forEach((sid) => rawServices.push({ serviceId: sid }));
+    } else if (data.services && data.services.length > 0) {
+      data.services.forEach((s) => rawServices.push(s));
+    }
+
     // Cross-branch service protection
-    if (data.services.length > 0) {
-      const serviceIds = data.services.map((s) => s.serviceId);
+    if (rawServices.length > 0) {
+      const serviceIds = rawServices.map((s) => s.serviceId);
       const services = await prisma.service.findMany({
         where: { id: { in: serviceIds } },
       });
@@ -457,12 +482,13 @@ export class EmployeeService {
         where: { employeeId: id },
       });
 
-      // Insert new services
-      if (data.services.length > 0) {
+      // Insert new services with isQualified: true
+      if (rawServices.length > 0) {
         await tx.employeeService.createMany({
-          data: data.services.map((item) => ({
+          data: rawServices.map((item) => ({
             employeeId: id,
             serviceId: item.serviceId,
+            isQualified: true,
             customDurationMinutes: item.customDurationMinutes || null,
             customCommissionRate: item.customCommissionRate !== undefined ? item.customCommissionRate : null,
           })),
@@ -598,6 +624,34 @@ export class EmployeeService {
   }
 
   /**
+   * Get employee schedule including 7-day template and exceptions
+   */
+  static async getSchedule(id: string, currentUser: CurrentUser) {
+    const employee = await prisma.employee.findUnique({
+      where: { id },
+      include: {
+        schedules: { orderBy: { dayOfWeek: "asc" } },
+        scheduleExceptions: { orderBy: { date: "asc" } },
+      },
+    });
+    if (!employee) {
+      throw new NotFoundError("Employee not found.");
+    }
+
+    if (currentUser.role === "EMPLOYEE") {
+      const isSelf = employee.userId === currentUser.id || employee.id === currentUser.id;
+      if (!isSelf) throw new ForbiddenError("Access denied.");
+    } else {
+      this.checkBranchAccess(currentUser, employee.branchId);
+    }
+
+    return {
+      schedules: employee.schedules,
+      exceptions: employee.scheduleExceptions,
+    };
+  }
+
+  /**
    * Create an exception / leave request for an employee
    */
   static async createException(id: string, data: CreateExceptionInput, currentUser: CurrentUser) {
@@ -610,17 +664,54 @@ export class EmployeeService {
 
     this.checkBranchAccess(currentUser, employee.branchId);
 
+    const targetDate = data.startDate || data.date;
+    if (!targetDate) {
+      throw new ValidationError("Start date is required.");
+    }
+
+    const isOff = data.isOff !== undefined ? data.isOff : (data.isOffDay !== undefined ? data.isOffDay : true);
+
     return prisma.scheduleException.create({
       data: {
         employeeId: id,
-        date: new Date(data.startDate),
+        date: new Date(targetDate),
         endDate: data.endDate ? new Date(data.endDate) : null,
         reason: data.reason || null,
-        isWorking: !data.isOffDay,
-        startTime: data.startTime || null,
-        endTime: data.endTime || null,
+        isOff,
+        isWorking: !isOff,
+        startTime: data.customStartTime || data.startTime || null,
+        endTime: data.customEndTime || data.endTime || null,
+        customStartTime: data.customStartTime || data.startTime || null,
+        customEndTime: data.customEndTime || data.endTime || null,
       },
     });
+  }
+
+  /**
+   * Delete an exception for an employee
+   */
+  static async deleteException(id: string, exceptionId: string, currentUser: CurrentUser) {
+    const employee = await prisma.employee.findUnique({
+      where: { id },
+    });
+    if (!employee) {
+      throw new NotFoundError("Employee not found.");
+    }
+
+    this.checkBranchAccess(currentUser, employee.branchId);
+
+    const exception = await prisma.scheduleException.findUnique({
+      where: { id: exceptionId },
+    });
+    if (!exception || exception.employeeId !== id) {
+      throw new NotFoundError("Schedule exception not found.");
+    }
+
+    await prisma.scheduleException.delete({
+      where: { id: exceptionId },
+    });
+
+    return { success: true };
   }
 
   /**
@@ -750,12 +841,13 @@ export class EmployeeService {
     });
 
     if (exception) {
+      const isWorking = !exception.isOff && exception.isWorking;
       return {
-        isWorking: exception.isWorking,
+        isWorking,
         isException: true,
         reason: exception.reason,
-        startTime: exception.startTime,
-        endTime: exception.endTime,
+        startTime: exception.customStartTime || exception.startTime,
+        endTime: exception.customEndTime || exception.endTime,
       };
     }
 

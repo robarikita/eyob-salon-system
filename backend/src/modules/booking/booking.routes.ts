@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { BookingController } from "./booking.controller";
+import { StaffController } from "../employee/staff.controller";
 import { authenticate, authorize, requireBranchAccess } from "../../middleware/auth";
 
 // 1. Customer booking router
@@ -47,12 +48,14 @@ customerBookingRouter.post(
   BookingController.createReview
 );
 
-// 2. Staff appointment router
+// 2. Staff personal portal & appointment router
 export const staffAppointmentRouter = Router();
 
 staffAppointmentRouter.use(authenticate, authorize("EMPLOYEE", "BRANCH_ADMIN", "OWNER"));
 
-staffAppointmentRouter.get("/appointments", BookingController.getStaffAppointments);
+staffAppointmentRouter.get("/me", StaffController.getMe);
+staffAppointmentRouter.get("/schedule", StaffController.getMySchedule);
+staffAppointmentRouter.get("/appointments", StaffController.getMyAppointments);
 staffAppointmentRouter.patch("/appointments/:id/accept", BookingController.acceptStaffAppointment);
 staffAppointmentRouter.patch("/appointments/:id/reject", BookingController.rejectStaffAppointment);
 staffAppointmentRouter.patch("/appointments/:id/status", BookingController.updateStaffAppointmentStatus);

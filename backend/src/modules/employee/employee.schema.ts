@@ -1,11 +1,15 @@
 import { z } from "zod";
 
 export const createEmployeeSchema = z.object({
-  fullName: z.string().min(2, "Full name must be at least 2 characters"),
+  fullName: z.string().min(2, "Full name must be at least 2 characters").optional(),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
   amharicName: z.string().optional().nullable(),
   phone: z.string().min(5, "Phone number is required"),
   email: z.string().email("Invalid email address").optional().nullable(),
   branchId: z.string().uuid("Invalid branch ID"),
+  title: z.string().optional().nullable(),
+  photoUrl: z.string().optional().nullable(),
   ritualTitle: z.string().optional().nullable(),
   employmentType: z.string().optional().nullable(),
   workstation: z.string().optional().nullable(),
@@ -14,8 +18,11 @@ export const createEmployeeSchema = z.object({
   emergencyContactPhone: z.string().optional().nullable(),
   baseSalary: z.number().min(0).optional().nullable(),
   commissionRate: z.number().min(0).max(100).optional().nullable(),
-  createPortalAccess: z.boolean().default(false),
-  tempPassword: z.string().min(8, "Temporary password must be at least 8 characters").optional().nullable(),
+  createLoginAccount: z.boolean().optional(),
+  createPortalAccess: z.boolean().optional(),
+  password: z.string().min(6).optional().nullable(),
+  tempPassword: z.string().min(6).optional().nullable(),
+  isActive: z.boolean().optional(),
 });
 
 export const updateEmployeeSchema = createEmployeeSchema.partial().extend({
@@ -30,7 +37,8 @@ export const assignServicesSchema = z.object({
       customDurationMinutes: z.number().int().positive().optional().nullable(),
       customCommissionRate: z.number().min(0).max(100).optional().nullable(),
     })
-  ),
+  ).optional(),
+  serviceIds: z.array(z.string().uuid("Invalid service ID")).optional(),
 });
 
 export const setEmployeeScheduleSchema = z.object({
@@ -43,16 +51,20 @@ export const setEmployeeScheduleSchema = z.object({
       breakEndTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)").optional().nullable(),
       isWorking: z.boolean(),
     })
-  ).length(7, "Schedules must cover all 7 days of the week (0-6)"),
+  ).min(1, "At least one schedule day required"),
 });
 
 export const createExceptionSchema = z.object({
-  startDate: z.string().min(1, "Start date is required"),
+  date: z.string().optional(),
+  startDate: z.string().optional(),
   endDate: z.string().optional().nullable(),
   reason: z.string().optional().nullable(),
-  isOffDay: z.boolean().default(true),
+  isOff: z.boolean().optional(),
+  isOffDay: z.boolean().optional(),
   startTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).optional().nullable(),
   endTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).optional().nullable(),
+  customStartTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).optional().nullable(),
+  customEndTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).optional().nullable(),
 });
 
 export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>;
