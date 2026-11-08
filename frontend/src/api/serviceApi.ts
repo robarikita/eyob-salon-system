@@ -136,7 +136,7 @@ export interface ServiceRitual {
 
 export interface GovernanceRequestItem {
   id: string;
-  type: 'CATEGORY_CREATION' | 'SERVICE_CREATION' | 'PRICE_UPDATE' | 'SERVICE_MUTATION';
+  type: 'CATEGORY_CREATION' | 'SERVICE_CREATION' | 'PRICE_UPDATE' | 'BRANCH_SERVICE_DEACTIVATION' | 'SERVICE_MUTATION' | string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   branchId: string;
   requestedBy: string;

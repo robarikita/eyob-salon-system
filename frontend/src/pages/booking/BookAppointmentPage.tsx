@@ -125,7 +125,7 @@ export const BookAppointmentPage: React.FC = () => {
     async function fetchServices() {
       try {
         setLoading(true);
-        const list = await serviceApi.listServices({ branchId: selectedBranch!.id });
+        const list = await serviceApi.listServices({ status: 'active', branchId: selectedBranch!.id });
         setServices(list);
 
         // Pre-select saved or first service
@@ -488,15 +488,15 @@ export const BookAppointmentPage: React.FC = () => {
                     <div
                       key={srv.id}
                       onClick={() => setSelectedService(srv)}
-                      className={`cursor-pointer rounded-xl p-5 border transition-all relative flex flex-col justify-between ${
+                      className={`cursor-pointer rounded-xl p-4 border transition-all duration-300 relative flex flex-col justify-between shadow-md ${
                         isSelected
-                          ? 'border-[#D4AF37] bg-white ring-2 ring-[#D4AF37]/50 shadow-md'
-                          : 'border-[#E5E2DD] bg-white hover:border-[#D4AF37]/60'
+                          ? 'border-[#D4AF37] ring-1 ring-[#D4AF37] bg-[#181412]'
+                          : 'border-[#2C2724] bg-[#181412] hover:border-[#D4AF37]'
                       }`}
                     >
                       <div>
-                        {/* Real Cloudinary / Database Image Banner */}
-                        <div className="w-full h-36 rounded-lg mb-3 overflow-hidden bg-[#181412] relative border border-[#E5E2DD]">
+                        {/* Real Cloudinary / Database Image Banner with Aspect-Video */}
+                        <div className="w-full aspect-video rounded-lg mb-3 overflow-hidden bg-gradient-to-br from-[#181412] to-[#2C2724] relative border border-[#2C2724]">
                           {srv.imageUrl ? (
                             <img
                               src={srv.imageUrl}
@@ -504,7 +504,7 @@ export const BookAppointmentPage: React.FC = () => {
                               className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
                             />
                           ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-[#181412] to-[#2C2724] text-[#D4AF37]/70">
+                            <div className="w-full h-full flex flex-col items-center justify-center text-[#D4AF37]/60">
                               <span className="material-symbols-outlined text-3xl mb-1">spa</span>
                               <span className="text-[10px] uppercase tracking-widest font-semibold text-stone-400">Sanctuary Ritual</span>
                             </div>
@@ -517,8 +517,8 @@ export const BookAppointmentPage: React.FC = () => {
                         </div>
 
                         <div className="flex items-start justify-between gap-2 mb-1.5">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#775A00] bg-[#FAF7F2] px-2 py-0.5 rounded border border-[#E5E2DD]">
-                            {srv.code}
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#D4AF37] bg-[#0E0B09] px-2 py-0.5 rounded border border-[#2C2724]">
+                            {srv.category?.split('&')[0]?.trim() || srv.code}
                           </span>
                           {isSelected && (
                             <span className="text-xs text-[#D4AF37] flex items-center font-bold">
@@ -527,26 +527,26 @@ export const BookAppointmentPage: React.FC = () => {
                           )}
                         </div>
 
-                        <h3 className="font-serif text-lg font-bold text-[#1C1C19] leading-tight mb-0.5">
+                        <h3 className="font-serif text-base font-bold text-[#FAF7F2] leading-tight mb-0.5">
                           {srv.name}
                         </h3>
-                        {srv.amharicName && (
-                          <p className="text-xs font-serif text-stone-500 mb-2">{srv.amharicName}</p>
+                        {(srv.nameAm || srv.amharicName) && (
+                          <p className="text-xs font-serif text-stone-400 mb-2">{srv.nameAm || srv.amharicName}</p>
                         )}
                         {srv.description && (
-                          <p className="text-xs text-stone-600 line-clamp-2 mb-3">{srv.description}</p>
+                          <p className="text-xs text-stone-400 line-clamp-2 mb-3">{srv.description}</p>
                         )}
 
                         {/* Branch Inactivity & Alternate Branch Suggestions Alert */}
                         {isUnavailableAtBranch && (
-                          <div className="mb-3 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs">
-                            <div className="flex items-center gap-1 font-semibold text-amber-900 mb-1">
+                          <div className="mb-3 p-2.5 rounded-lg bg-amber-950/30 border border-amber-900/40 text-xs">
+                            <div className="flex items-center gap-1 font-semibold text-amber-400 mb-1">
                               <span className="material-symbols-outlined text-xs">info</span>
                               <span>Unavailable at {selectedBranch?.name} / በዚህ ቅርንጫፍ አይሰጥም</span>
                             </div>
                             {srv.alternateBranches && srv.alternateBranches.length > 0 ? (
                               <div className="mt-1.5">
-                                <span className="text-[10px] text-amber-800 block mb-1">Book at alternate branch / በዚህ ቅርንጫፍ ይያዙ:</span>
+                                <span className="text-[10px] text-amber-300 block mb-1">Book at alternate branch / በዚህ ቅርንጫፍ ይያዙ:</span>
                                 <div className="flex flex-wrap gap-1">
                                   {srv.alternateBranches.map((alt) => (
                                     <button
@@ -568,22 +568,22 @@ export const BookAppointmentPage: React.FC = () => {
                                 </div>
                               </div>
                             ) : (
-                              <span className="text-[10px] text-stone-500">Currently unavailable / ለጊዜው አይሰጥም</span>
+                              <span className="text-[10px] text-stone-400">Currently unavailable / ለጊዜው አይሰጥም</span>
                             )}
                           </div>
                         )}
                       </div>
 
-                      <div className="flex flex-col pt-3 border-t border-[#F0EDE9] text-xs gap-1.5">
+                      <div className="flex flex-col pt-3 border-t border-[#2C2724] text-xs gap-2 mt-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-stone-500 flex items-center gap-1 font-medium">
-                            <span className="material-symbols-outlined text-xs">schedule</span>
-                            {duration} Mins
+                          <span className="text-stone-400 flex items-center gap-1 font-medium text-[11px]">
+                            <span className="material-symbols-outlined text-xs text-[#D4AF37]">schedule</span>
+                            {duration} min / ደቂቃ
                           </span>
                           <div className="text-right">
-                            <span className="font-bold text-sm text-[#775A00]">
+                            <span className="font-bold text-sm text-[#D4AF37] font-serif">
                               {srv.isUniformPrice === false
-                                ? `From ${Number(srv.minPrice || price).toLocaleString()} ETB / እንደ ቅርንጫፉ`
+                                ? `From ${Number(srv.minPrice || price).toLocaleString()} ETB`
                                 : `${Number(price).toLocaleString()} ETB`}
                             </span>
                           </div>
@@ -598,7 +598,7 @@ export const BookAppointmentPage: React.FC = () => {
                                 e.stopPropagation();
                                 setViewingRatesServiceId(viewingRatesServiceId === srv.id ? null : srv.id);
                               }}
-                              className="text-[10px] text-[#D4AF37] bg-[#181412] hover:bg-[#2C2724] px-2 py-0.5 rounded border border-[#D4AF37]/40 font-semibold transition cursor-pointer"
+                              className="text-[10px] text-[#D4AF37] bg-[#0E0B09] hover:bg-[#2C2724] px-2 py-0.5 rounded border border-[#D4AF37]/40 font-semibold transition cursor-pointer"
                             >
                               Branch Rates / የቅርንጫፍ ዋጋ
                             </button>
@@ -609,7 +609,7 @@ export const BookAppointmentPage: React.FC = () => {
                         {viewingRatesServiceId === srv.id && srv.branchPricings && (
                           <div
                             onClick={(e) => e.stopPropagation()}
-                            className="mt-2 p-2.5 bg-[#181412] text-[#FAF7F2] rounded-lg border border-[#D4AF37]/40 text-xs animate-fade-in"
+                            className="p-2.5 bg-[#0E0B09] text-[#FAF7F2] rounded-lg border border-[#D4AF37]/40 text-xs animate-fade-in"
                           >
                             <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-[#2C2724]">
                               <span className="font-bold text-[#D4AF37] text-[10px] uppercase tracking-wider">
@@ -638,6 +638,18 @@ export const BookAppointmentPage: React.FC = () => {
                             </div>
                           </div>
                         )}
+
+                        {/* Action Select Button */}
+                        <button
+                          type="button"
+                          className={`w-full py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition ${
+                            isSelected
+                              ? 'bg-[#D4AF37] text-[#0E0B09]'
+                              : 'bg-[#2C2724] text-stone-300 hover:bg-[#D4AF37] hover:text-[#0E0B09]'
+                          }`}
+                        >
+                          {isSelected ? 'Selected / ተመርጧል ✓' : 'Select / ምረጥ'}
+                        </button>
                       </div>
                     </div>
                   );

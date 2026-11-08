@@ -134,21 +134,48 @@ export class ServiceRitualService {
     const isElevated = currentUser?.role === "OWNER" || currentUser?.role === "BRANCH_ADMIN";
     const conditions: any[] = [];
 
-    // Customer/Guest Isolation: Strictly active & approved (including category status)
-    if (!isElevated) {
+    // Customer/Guest Isolation or Active Catalog Query: Strictly active & approved (including category status & branch exceptions)
+    if (!isElevated || filter.status === "active") {
       conditions.push({ isActive: true });
       conditions.push({ approvalStatus: "APPROVED" });
-      conditions.push({
-        OR: [
-          { serviceCategory: null },
-          { serviceCategory: { isActive: true, status: "APPROVED" } },
-        ],
-      });
+
+      if (filter.branchId) {
+        conditions.push({
+          OR: [
+            { serviceCategory: null },
+            { serviceCategory: { isActive: true, status: "APPROVED" } },
+            {
+              AND: [
+                {
+                  branchPrices: {
+                    some: {
+                      branchId: filter.branchId,
+                      isActive: true,
+                    },
+                  },
+                },
+                {
+                  priceHistory: {
+                    some: {
+                      branchId: filter.branchId,
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        });
+      } else {
+        conditions.push({
+          OR: [
+            { serviceCategory: null },
+            { serviceCategory: { isActive: true, status: "APPROVED" } },
+          ],
+        });
+      }
     } else {
       // Status filter
-      if (filter.status === "active") {
-        conditions.push({ isActive: true });
-      } else if (filter.status === "inactive") {
+      if (filter.status === "inactive") {
         conditions.push({ isActive: false });
       }
 
@@ -995,7 +1022,13 @@ export class ServiceRitualService {
       throw new ForbiddenError("Forbidden: Insufficient privileges.");
     }
 
-    const service = await prisma.service.findUnique({ where: { id: serviceId } });
+    const service = await prisma.service.findUnique({
+      where: { id: serviceId },
+      include: {
+        serviceCategory: true,
+        branchPrices: { where: { branchId: data.branchId } },
+      },
+    });
     if (!service) throw new NotFoundError("Service ritual not found.");
 
     const branch = await prisma.branch.findUnique({ where: { id: data.branchId } });
@@ -1009,6 +1042,25 @@ export class ServiceRitualService {
 
       const reqType = data.isActive === false ? "BRANCH_SERVICE_DEACTIVATION" : "PRICE_UPDATE";
 
+      const rawPrice = Number(data.customPrice);
+      const safePrice = isNaN(rawPrice) ? Number(service.basePrice) : Math.min(Math.max(0, rawPrice), 999999.99);
+      const roundedPrice = Math.round(safePrice * 100) / 100;
+
+      let safeDeposit: number | null = null;
+      if (data.depositValue !== undefined && data.depositValue !== null && String(data.depositValue).trim() !== "") {
+        const rawDep = Number(data.depositValue);
+        if (!isNaN(rawDep)) {
+          const maxDep = data.depositType === "PERCENTAGE" ? 100 : 999999.99;
+          safeDeposit = Math.round(Math.min(Math.max(0, rawDep), maxDep) * 100) / 100;
+        }
+      }
+
+      const safeDuration = data.customDurationMinutes ? parseInt(String(data.customDurationMinutes), 10) : null;
+
+      const currentBranchPrice = service.branchPrices && service.branchPrices.length > 0
+        ? Number(service.branchPrices[0].customPrice)
+        : Number(service.basePrice);
+
       const govReq = await prisma.governanceRequest.create({
         data: {
           type: reqType,
@@ -1019,11 +1071,23 @@ export class ServiceRitualService {
           payload: {
             serviceId,
             branchId: data.branchId,
-            customPrice: data.customPrice,
-            customDurationMinutes: data.customDurationMinutes ?? null,
+            serviceName: service.name,
+            serviceNameAm: service.nameAm || service.amharicName || null,
+            serviceImage: service.imageUrl || null,
+            categoryName: service.serviceCategory?.name || service.category || "Uncategorized",
+            currentPrice: currentBranchPrice,
+            currentBasePrice: Number(service.basePrice),
+            currentBranchPrice,
+            proposedPrice: roundedPrice,
+            proposedDuration: safeDuration,
+            proposedDepositType: data.depositType ?? null,
+            proposedDepositValue: safeDeposit,
+            customPrice: roundedPrice,
+            customDurationMinutes: safeDuration,
             depositType: data.depositType ?? null,
-            depositValue: data.depositValue ?? null,
+            depositValue: safeDeposit,
             isActive: data.isActive,
+            reason: data.reason.trim(),
           },
         },
       });

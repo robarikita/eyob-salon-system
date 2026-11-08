@@ -489,100 +489,119 @@ export class AdminController {
 
       const newStatus = isApprove ? "APPROVED" : "REJECTED";
 
-      // 1. Update the governance request record
-      const updatedRequest = await prisma.governanceRequest.update({
-        where: { id },
-        data: {
-          status: newStatus,
-          reviewedBy: req.user.id,
-          reviewNote: reviewNote || null,
-        },
+      // 1. Execute database updates atomically in a Prisma transaction
+      const updatedRequest = await prisma.$transaction(async (tx) => {
+        const reqUpdated = await tx.governanceRequest.update({
+          where: { id },
+          data: {
+            status: newStatus,
+            reviewedBy: req.user!.id,
+            reviewNote: reviewNote || null,
+          },
+        });
+
+        // 2. Apply or reject changes based on request type
+        if (isApprove) {
+          if (govRequest.type === "CATEGORY_CREATION" && payload?.categoryId) {
+            await tx.serviceCategory.update({
+              where: { id: payload.categoryId },
+              data: { status: "APPROVED" },
+            });
+          } else if (govRequest.type === "SERVICE_CREATION" && payload?.serviceId) {
+            await tx.service.update({
+              where: { id: payload.serviceId },
+              data: { approvalStatus: "APPROVED" },
+            });
+          } else if (govRequest.type === "PRICE_UPDATE" && payload?.serviceId) {
+            const rawPrice = Number(payload.proposedPrice !== undefined ? payload.proposedPrice : payload.customPrice);
+            const safePrice = isNaN(rawPrice) ? 0 : Math.min(Math.max(0, rawPrice), 999999.99);
+            const roundedPrice = Math.round(safePrice * 100) / 100;
+
+            const depositInput = payload.proposedDepositValue !== undefined ? payload.proposedDepositValue : payload.depositValue;
+            const depositTypeInput = payload.proposedDepositType || payload.depositType || null;
+
+            let safeDeposit: number | null = null;
+            if (depositInput !== undefined && depositInput !== null && depositInput !== "") {
+              const rawDep = Number(depositInput);
+              if (!isNaN(rawDep)) {
+                const maxDep = depositTypeInput === "PERCENTAGE" ? 100 : 999999.99;
+                safeDeposit = Math.round(Math.min(Math.max(0, rawDep), maxDep) * 100) / 100;
+              }
+            }
+
+            const rawDuration = payload.proposedDuration !== undefined ? payload.proposedDuration : payload.customDurationMinutes;
+            const safeDuration = rawDuration ? parseInt(String(rawDuration), 10) : null;
+
+            // Upsert branch price
+            await tx.branchServicePrice.upsert({
+              where: {
+                branchId_serviceId: {
+                  branchId: govRequest.branchId,
+                  serviceId: payload.serviceId,
+                },
+              },
+              update: {
+                customPrice: roundedPrice,
+                customDurationMinutes: safeDuration,
+                depositType: depositTypeInput,
+                depositValue: safeDeposit,
+                isActive: true,
+              },
+              create: {
+                branchId: govRequest.branchId,
+                serviceId: payload.serviceId,
+                customPrice: roundedPrice,
+                customDurationMinutes: safeDuration,
+                depositType: depositTypeInput,
+                depositValue: safeDeposit,
+                isActive: true,
+              },
+            });
+
+            // Log to price history
+            await tx.servicePriceHistory.create({
+              data: {
+                serviceId: payload.serviceId,
+                branchId: govRequest.branchId,
+                price: roundedPrice,
+                changedBy: req.user!.id,
+                reason: `Approved branch proposal: ${govRequest.reason || "Price override"}`,
+              },
+            });
+          } else if (govRequest.type === "BRANCH_SERVICE_DEACTIVATION" && payload?.serviceId) {
+            await tx.branchServicePrice.upsert({
+              where: {
+                branchId_serviceId: {
+                  branchId: govRequest.branchId,
+                  serviceId: payload.serviceId,
+                },
+              },
+              update: { isActive: false },
+              create: {
+                branchId: govRequest.branchId,
+                serviceId: payload.serviceId,
+                customPrice: payload.customPrice ? Math.round(Math.min(Math.max(0, Number(payload.customPrice)), 999999.99) * 100) / 100 : 0,
+                isActive: false,
+              },
+            });
+          }
+        } else {
+          // Rejected
+          if (govRequest.type === "CATEGORY_CREATION" && payload?.categoryId) {
+            await tx.serviceCategory.update({
+              where: { id: payload.categoryId },
+              data: { status: "REJECTED" },
+            });
+          } else if (govRequest.type === "SERVICE_CREATION" && payload?.serviceId) {
+            await tx.service.update({
+              where: { id: payload.serviceId },
+              data: { approvalStatus: "REJECTED" },
+            });
+          }
+        }
+
+        return reqUpdated;
       });
-
-      // 2. Apply or reject changes based on request type
-      if (isApprove) {
-        if (govRequest.type === "CATEGORY_CREATION" && payload?.categoryId) {
-          await prisma.serviceCategory.update({
-            where: { id: payload.categoryId },
-            data: { status: "APPROVED" },
-          });
-        } else if (govRequest.type === "SERVICE_CREATION" && payload?.serviceId) {
-          await prisma.service.update({
-            where: { id: payload.serviceId },
-            data: { approvalStatus: "APPROVED" },
-          });
-        } else if (govRequest.type === "PRICE_UPDATE" && payload?.serviceId) {
-          const customPrice = Number(payload.customPrice);
-          const customDurationMinutes = payload.customDurationMinutes ? Number(payload.customDurationMinutes) : null;
-          const depositValue = payload.depositValue !== undefined && payload.depositValue !== null ? Number(payload.depositValue) : null;
-
-          // Upsert branch price
-          await prisma.branchServicePrice.upsert({
-            where: {
-              branchId_serviceId: {
-                branchId: govRequest.branchId,
-                serviceId: payload.serviceId,
-              },
-            },
-            update: {
-              customPrice,
-              customDurationMinutes,
-              depositType: payload.depositType || null,
-              depositValue,
-              isActive: true,
-            },
-            create: {
-              branchId: govRequest.branchId,
-              serviceId: payload.serviceId,
-              customPrice,
-              customDurationMinutes,
-              depositType: payload.depositType || null,
-              depositValue,
-              isActive: true,
-            },
-          });
-
-          // Log to price history
-          await prisma.servicePriceHistory.create({
-            data: {
-              serviceId: payload.serviceId,
-              branchId: govRequest.branchId,
-              price: customPrice,
-              changedBy: req.user.id,
-              reason: `Approved branch proposal: ${govRequest.reason || "Price override"}`,
-            },
-          });
-        } else if (govRequest.type === "BRANCH_SERVICE_DEACTIVATION" && payload?.serviceId) {
-          await prisma.branchServicePrice.upsert({
-            where: {
-              branchId_serviceId: {
-                branchId: govRequest.branchId,
-                serviceId: payload.serviceId,
-              },
-            },
-            update: { isActive: false },
-            create: {
-              branchId: govRequest.branchId,
-              serviceId: payload.serviceId,
-              customPrice: payload.customPrice ? Number(payload.customPrice) : 0,
-              isActive: false,
-            },
-          });
-        }
-      } else {
-        // Rejected
-        if (govRequest.type === "CATEGORY_CREATION" && payload?.categoryId) {
-          await prisma.serviceCategory.update({
-            where: { id: payload.categoryId },
-            data: { status: "REJECTED" },
-          });
-        } else if (govRequest.type === "SERVICE_CREATION" && payload?.serviceId) {
-          await prisma.service.update({
-            where: { id: payload.serviceId },
-            data: { approvalStatus: "REJECTED" },
-          });
-        }
-      }
 
       // 3. Notify the requesting Branch Admin
       let notifTitle = isApprove ? "Request Approved / ጸድቋል" : "Request Rejected / ውድቅ ተደርጓል";

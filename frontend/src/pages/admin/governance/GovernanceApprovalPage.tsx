@@ -176,35 +176,105 @@ export const GovernanceApprovalPage: React.FC = () => {
 
                   {/* Reason & Payload Diff */}
                   <div className="mb-4">
-                    <div className="text-xs text-stone-300 font-medium mb-2">
-                      <span className="text-stone-400 font-normal">Reason / ምክንያት: </span>
-                      {req.reason}
-                    </div>
+                    {/* Enriched Diff Card */}
+                    {(req.type === 'PRICE_UPDATE' || req.type === 'BRANCH_SERVICE_DEACTIVATION') ? (
+                      <div className="bg-[#0E0B09] p-3.5 rounded-xl border border-[#2C2724] space-y-3">
+                        {/* Service Thumbnail & Info */}
+                        <div className="flex items-center gap-3">
+                          {p.serviceImage || p.imageUrl ? (
+                            <img
+                              src={p.serviceImage || p.imageUrl}
+                              alt={p.serviceName || p.name || 'Ritual'}
+                              className="w-12 h-12 rounded-lg object-cover border border-[#2C2724] flex-shrink-0"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded-lg bg-[#181412] border border-[#2C2724] flex items-center justify-center text-[#D4AF37] flex-shrink-0">
+                              <span className="material-symbols-outlined text-xl">spa</span>
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <span className="px-2 py-0.5 rounded bg-[#181412] text-stone-400 border border-[#2C2724] text-[10px] font-semibold uppercase">
+                                {p.categoryName || p.category || 'Ritual'}
+                              </span>
+                              {p.serviceId && (
+                                <span className="text-[10px] font-mono text-stone-500">#{String(p.serviceId).slice(0, 8)}</span>
+                              )}
+                            </div>
+                            <h4 className="text-sm font-serif font-bold text-[#FAF7F2] truncate">
+                              {p.serviceName || p.name || 'Ritual / አገልግሎት'}
+                            </h4>
+                            {(p.serviceNameAm || p.nameAm) && (
+                              <p className="text-[11px] font-serif text-stone-400 truncate">
+                                {p.serviceNameAm || p.nameAm}
+                              </p>
+                            )}
+                          </div>
+                        </div>
 
-                    {/* Diff Card */}
-                    <div className="bg-[#0E0B09] p-3 rounded-lg border border-[#2C2724] text-xs space-y-1.5 font-mono">
-                      {req.type === 'PRICE_UPDATE' && (
-                        <div className="flex items-center justify-between text-stone-300">
-                          <span>Proposed Price / የቀረበው ዋጋ:</span>
-                          <span className="text-[#D4AF37] font-bold text-sm">
-                            {Number(p.customPrice).toLocaleString()} ETB
-                          </span>
+                        {/* Comparison Pills */}
+                        <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-[#2C2724]/60 text-xs">
+                          <div className="flex items-center gap-1 bg-[#181412] px-2.5 py-1 rounded-lg border border-[#2C2724]">
+                            <span className="text-stone-400 text-[10px] uppercase">Current:</span>
+                            <span className="text-stone-200 font-mono font-bold">
+                              {p.currentPrice !== undefined && p.currentPrice !== null
+                                ? `${Number(p.currentPrice).toLocaleString()} ETB`
+                                : p.currentBranchPrice !== undefined && p.currentBranchPrice !== null
+                                ? `${Number(p.currentBranchPrice).toLocaleString()} ETB`
+                                : p.currentBasePrice !== undefined && p.currentBasePrice !== null
+                                ? `${Number(p.currentBasePrice).toLocaleString()} ETB`
+                                : '—'}
+                            </span>
+                          </div>
+                          <span className="text-stone-500 font-bold">→</span>
+                          <div className="flex items-center gap-1 bg-[#D4AF37]/10 px-2.5 py-1 rounded-lg border border-[#D4AF37]/30">
+                            <span className="text-[#D4AF37] text-[10px] uppercase font-semibold">
+                              {req.type === 'BRANCH_SERVICE_DEACTIVATION' ? 'Action:' : 'Proposed:'}
+                            </span>
+                            <span className="text-[#D4AF37] font-mono font-bold">
+                              {req.type === 'BRANCH_SERVICE_DEACTIVATION'
+                                ? 'Deactivate / ማቆም'
+                                : `${Number(p.proposedPrice ?? p.customPrice ?? 0).toLocaleString()} ETB`}
+                            </span>
+                          </div>
+                          {(p.proposedDuration || p.customDurationMinutes) && (
+                            <div className="flex items-center gap-1 bg-[#181412] px-2.5 py-1 rounded-lg border border-[#2C2724]">
+                              <span className="text-stone-400 text-[10px] uppercase">Duration:</span>
+                              <span className="text-stone-300 font-mono font-semibold">
+                                {p.proposedDuration || p.customDurationMinutes} min
+                              </span>
+                            </div>
+                          )}
                         </div>
-                      )}
-                      {req.type === 'CATEGORY_CREATION' && (
-                        <div className="space-y-1 text-stone-300">
-                          <div><span className="text-stone-400 font-sans">Name:</span> {p.name}</div>
-                          {p.nameAm && <div><span className="text-stone-400 font-sans">Amharic:</span> {p.nameAm}</div>}
-                          {p.description && <div><span className="text-stone-400 font-sans">Desc:</span> {p.description}</div>}
-                        </div>
-                      )}
-                      {req.type === 'SERVICE_CREATION' && (
-                        <div className="space-y-1 text-stone-300">
-                          <div><span className="text-stone-400 font-sans">Ritual:</span> {p.name} ({p.code})</div>
-                          <div><span className="text-stone-400 font-sans">Category:</span> {p.category}</div>
-                          <div className="text-[#D4AF37]"><span className="text-stone-400 font-sans">Price:</span> {p.basePrice} ETB ({p.durationMinutes}m)</div>
-                        </div>
-                      )}
+                      </div>
+                    ) : (
+                      <div className="bg-[#0E0B09] p-3 rounded-lg border border-[#2C2724] text-xs space-y-1.5 font-mono">
+                        {req.type === 'CATEGORY_CREATION' && (
+                          <div className="space-y-1 text-stone-300">
+                            <div><span className="text-stone-400 font-sans">Name:</span> {p.name}</div>
+                            {p.nameAm && <div><span className="text-stone-400 font-sans">Amharic:</span> {p.nameAm}</div>}
+                            {p.description && <div><span className="text-stone-400 font-sans">Desc:</span> {p.description}</div>}
+                          </div>
+                        )}
+                        {req.type === 'SERVICE_CREATION' && (
+                          <div className="space-y-1 text-stone-300">
+                            <div><span className="text-stone-400 font-sans">Ritual:</span> {p.name} ({p.code})</div>
+                            <div><span className="text-stone-400 font-sans">Category:</span> {p.category}</div>
+                            <div className="text-[#D4AF37]"><span className="text-stone-400 font-sans">Price:</span> {p.basePrice} ETB ({p.durationMinutes}m)</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Branch Badge + Reason */}
+                    <div className="mt-2.5 flex items-start gap-2 text-xs">
+                      <span className="px-2 py-0.5 rounded bg-[#0E0B09] text-[#D4AF37] border border-[#2C2724] text-[10px] font-bold uppercase tracking-wider flex-shrink-0">
+                        {req.branch?.name || 'Branch'}
+                      </span>
+                      <p className="text-stone-300 text-xs">
+                        <span className="text-stone-500 font-normal">Reason / ምክንያት: </span>
+                        {req.reason}
+                      </p>
                     </div>
                   </div>
 

@@ -580,6 +580,11 @@ export const ServiceCatalogPage: React.FC = () => {
                   const isActive = s.isActive !== undefined ? s.isActive : s.status;
                   const isPending = s.approvalStatus === 'PENDING_APPROVAL';
 
+                  const matchingCategory = categoriesList.find(
+                    (c) => (s.categoryId && c.id === s.categoryId) || c.name.toLowerCase() === (s.category || '').toLowerCase() || c.slug === s.category
+                  );
+                  const isCategoryInactive = matchingCategory ? matchingCategory.isActive === false : ((s as any).serviceCategory ? (s as any).serviceCategory.isActive === false : false);
+
                   const depositLabel =
                     s.depositType === 'NONE'
                       ? 'No Deposit / ያለ ቅድመ ክፍያ'
@@ -623,11 +628,17 @@ export const ServiceCatalogPage: React.FC = () => {
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                               isActive
-                                ? 'bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/40'
+                                ? isCategoryInactive
+                                  ? 'bg-amber-950/60 text-amber-400 border border-amber-900/60'
+                                  : 'bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/40'
                                 : 'bg-red-950/40 text-red-400 border border-red-900/40'
                             }`}
                           >
-                            {isActive ? 'Active / ንቁ' : 'Inactive / ቦዘኔ'}
+                            {isActive
+                              ? isCategoryInactive
+                                ? 'Inactive via Category / በምድብ ምክንያት ዝግ'
+                                : 'Active / ንቁ'
+                              : 'Inactive / ቦዘኔ'}
                           </span>
                         </div>
 
@@ -727,6 +738,11 @@ export const ServiceCatalogPage: React.FC = () => {
                       {services.map((s) => {
                         const displayPrice = Number(s.effectivePrice ?? s.basePrice);
                         const isActive = s.isActive !== undefined ? s.isActive : s.status;
+                        const matchingCategory = categoriesList.find(
+                          (c) => (s.categoryId && c.id === s.categoryId) || c.name.toLowerCase() === (s.category || '').toLowerCase() || c.slug === s.category
+                        );
+                        const isCategoryInactive = matchingCategory ? matchingCategory.isActive === false : ((s as any).serviceCategory ? (s as any).serviceCategory.isActive === false : false);
+
                         return (
                           <tr key={s.id} className="hover:bg-[#2C2724]/40 transition">
                             <td className="py-3 px-4 font-mono text-[#D4AF37]">{s.code || '—'}</td>
@@ -743,11 +759,17 @@ export const ServiceCatalogPage: React.FC = () => {
                               <span
                                 className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                                   isActive
-                                    ? 'bg-[#D4AF37]/20 text-[#D4AF37]'
+                                    ? isCategoryInactive
+                                      ? 'bg-amber-950/60 text-amber-400 border border-amber-900/60'
+                                      : 'bg-[#D4AF37]/20 text-[#D4AF37]'
                                     : 'bg-red-950/40 text-red-400'
                                 }`}
                               >
-                                {isActive ? 'Active / ንቁ' : 'Inactive / ቦዘኔ'}
+                                {isActive
+                                  ? isCategoryInactive
+                                    ? 'Inactive via Category / በምድብ ምክንያት ዝግ'
+                                    : 'Active / ንቁ'
+                                  : 'Inactive / ቦዘኔ'}
                               </span>
                             </td>
                             <td className="py-3 px-4 text-right">
