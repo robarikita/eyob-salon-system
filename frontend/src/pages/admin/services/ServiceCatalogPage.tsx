@@ -1,10 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import AdminLayout from '../../../components/admin/AdminLayout';
-import { serviceApi, ServiceRitual } from '../../../api/serviceApi';
+import { serviceApi, ServiceRitual, CreateServicePayload } from '../../../api/serviceApi';
+import { branchApi, BranchDTO } from '../../../api/branchApi';
+
+const DEFAULT_CATEGORIES = [
+  'Hair Styling & Couture',
+  'Bridal & Royal Special Occasions',
+  'Holistic Spa & Scalp Therapy',
+  'Advanced Aesthetics & Facials',
+  'Luxury Nail Architecture',
+];
+
+const DURATION_PRESETS = [15, 30, 45, 60, 90, 120];
 
 export const ServiceCatalogPage: React.FC = () => {
-  const navigate = useNavigate();
+  const [branches, setBranches] = useState<BranchDTO[]>([]);
   const [services, setServices] = useState<ServiceRitual[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -14,27 +25,48 @@ export const ServiceCatalogPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [notification, setNotification] = useState<string | null>(null);
 
-  const categories = [
-    { label: 'All Rituals', count: 24, key: 'All' },
-    { label: 'Hair Styling & Couture', count: 8, key: 'Hair Styling & Couture' },
-    { label: 'Bridal & Royal Special Occasions', count: 4, key: 'Bridal' },
-    { label: 'Holistic Spa & Scalp Therapy', count: 5, key: 'Spa' },
-    { label: 'Advanced Aesthetics & Facials', count: 4, key: 'Aesthetics' },
-    { label: 'Luxury Nail Architecture', count: 3, key: 'Nail' },
-  ];
+  useEffect(() => {
+    async function loadBranches() {
+      try {
+        const list = await branchApi.listBranches();
+        setBranches(list || []);
+      } catch (err: any) {
+        console.error('Failed to load branches:', err);
+      }
+    }
+    loadBranches();
+  }, []);
+
+  // Create / Edit Modal State
+  const [modalOpen, setModalOpen] = useState<boolean>(false);
+  const [editingService, setEditingService] = useState<ServiceRitual | null>(null);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isUploadingImage, setIsUploadingImage] = useState<boolean>(false);
+
+  // Form State
+  const [formName, setFormName] = useState<string>('');
+  const [formNameAm, setFormNameAm] = useState<string>('');
+  const [formCategory, setFormCategory] = useState<string>('Hair Styling & Couture');
+  const [formCustomCategory, setFormCustomCategory] = useState<string>('');
+  const [formBasePrice, setFormBasePrice] = useState<number>(1000);
+  const [formDuration, setFormDuration] = useState<number>(60);
+  const [formDepositType, setFormDepositType] = useState<'NONE' | 'FIXED' | 'PERCENTAGE'>('NONE');
+  const [formDepositValue, setFormDepositValue] = useState<number>(20);
+  const [formImageUrl, setFormImageUrl] = useState<string>('');
+  const [formIsActive, setFormIsActive] = useState<boolean>(true);
 
   const fetchServices = async () => {
     setLoading(true);
     try {
       const data = await serviceApi.listServices({
-        search: searchQuery,
+        search: searchQuery || undefined,
         category: selectedCategory === 'All' ? undefined : selectedCategory,
         branchId: selectedBranch === 'all' ? undefined : selectedBranch,
         isActive: selectedStatus === 'all' ? undefined : selectedStatus === 'active',
       });
-      setServices(data);
-    } catch {
-      // handled in serviceApi fallback
+      setServices(data || []);
+    } catch (err: any) {
+      console.error('Failed to load services:', err);
     } finally {
       setLoading(false);
     }
@@ -50,484 +82,407 @@ export const ServiceCatalogPage: React.FC = () => {
       setServices((prev) =>
         prev.map((s) => (s.id === id ? { ...s, status: result.service.status } : s))
       );
-      if (result.warningCount > 0) {
-        setNotification(`⚠️ ${result.message} (${result.warningCount} upcoming guest bookings preserved)`);
-      } else {
-        setNotification(`✨ Ritual "${name}" status updated successfully.`);
-      }
-      setTimeout(() => setNotification(null), 5000);
+      setNotification(`Status updated: ${name}`);
+      setTimeout(() => setNotification(null), 4000);
     } catch (err: any) {
-      alert(`Could not toggle ritual status: ${err.message}`);
+      alert(`Toggle failed: ${err.message}`);
     }
   };
 
+  const openCreateModal = () => {
+    setEditingService(null);
+    setFormName('');
+    setFormNameAm('');
+    setFormCategory('Hair Styling & Couture');
+    setFormCustomCategory('');
+    setFormBasePrice(1000);
+    setFormDuration(60);
+    setFormDepositType('NONE');
+    setFormDepositValue(20);
+    setFormImageUrl('');
+    setFormIsActive(true);
+    setModalOpen(true);
+  };
+
+  const openEditModal = (s: ServiceRitual) => {
+    setEditingService(s);
+    setFormName(s.name);
+    setFormNameAm(s.nameAm || s.amharicName || '');
+    if (DEFAULT_CATEGORIES.includes(s.category)) {
+      setFormCategory(s.category);
+      setFormCustomCategory('');
+    } else {
+      setFormCategory('OTHER');
+      setFormCustomCategory(s.category);
+    }
+    setFormBasePrice(Number(s.basePrice));
+    setFormDuration(s.durationMinutes);
+    setFormDepositType(s.depositType || 'NONE');
+    setFormDepositValue(Number(s.depositValue ?? 0));
+    setFormImageUrl(s.imageUrl || '');
+    setFormIsActive(s.status);
+    setModalOpen(true);
+  };
+
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingImage(true);
+    try {
+      const res = await serviceApi.uploadImage(file);
+      setFormImageUrl(res.url);
+      setNotification('Image uploaded / ምስል ተጭኗል');
+      setTimeout(() => setNotification(null), 3000);
+    } catch (err: any) {
+      alert(`Image upload failed: ${err.message}`);
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const handleSaveService = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formName.trim()) {
+      alert('Please enter service name.');
+      return;
+    }
+    const finalCategory = formCategory === 'OTHER' ? formCustomCategory.trim() || 'Custom' : formCategory;
+
+    setIsSaving(true);
+    try {
+      const payload: CreateServicePayload = {
+        name: formName.trim(),
+        nameAm: formNameAm.trim() || undefined,
+        category: finalCategory,
+        basePrice: Number(formBasePrice),
+        durationMinutes: Number(formDuration),
+        depositType: formDepositType,
+        depositValue: formDepositType === 'NONE' ? 0 : Number(formDepositValue),
+        imageUrl: formImageUrl.trim() || undefined,
+        isActive: formIsActive,
+      };
+
+      if (editingService) {
+        await serviceApi.updateService(editingService.id, payload);
+        setNotification('Service updated / አገልግሎት ተቀይሯል');
+      } else {
+        await serviceApi.createService(payload);
+        setNotification('Service created / አዲስ አገልግሎት ተፈጥሯል');
+      }
+      setModalOpen(false);
+      fetchServices();
+      setTimeout(() => setNotification(null), 4000);
+    } catch (err: any) {
+      alert(`Save failed: ${err.message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Derive dynamic categories & counts
+  const distinctCategories = Array.from(new Set(services.map((s) => s.category).filter(Boolean)));
+  const totalCount = services.length;
+  const activeCount = services.filter((s) => s.status).length;
+  const inactiveCount = totalCount - activeCount;
+
   return (
     <AdminLayout activePath="/admin/services">
-      <div className="relative w-full">
-        {/* Ambient gold luminescent back-glow */}
-        <div className="absolute -top-10 left-1/4 w-96 h-32 bg-primary-container/15 rounded-full blur-3xl pointer-events-none -z-10" />
-        <div className="absolute -top-12 right-10 w-80 h-40 bg-primary-container/10 rounded-full blur-3xl pointer-events-none -z-10" />
-
-        {/* Floating Notification */}
+      <div className="relative w-full text-[#FAF7F2]">
+        {/* Notification Toast */}
         {notification && (
-          <div className="mb-4 p-4 rounded-xl bg-inverse-surface text-surface-bright flex items-center justify-between shadow-xl border border-primary-container/30 animate-fade-in">
-            <div className="flex items-center gap-3">
-              <span className="material-symbols-outlined text-primary-fixed">info</span>
-              <span className="text-sm font-medium">{notification}</span>
+          <div className="mb-4 p-3 rounded-lg bg-[#181412] text-[#D4AF37] border border-[#D4AF37]/40 flex items-center justify-between shadow-lg text-xs font-semibold animate-fade-in">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-[16px]">info</span>
+              <span>{notification}</span>
             </div>
             <button
               onClick={() => setNotification(null)}
-              className="text-surface-dim hover:text-white text-xs uppercase tracking-wider"
+              className="text-stone-400 hover:text-white text-[10px] uppercase tracking-wider"
             >
-              Dismiss
+              Dismiss / ዝጋ
             </button>
           </div>
         )}
 
-        {/* Breadcrumb & Status Ribbon */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-on-surface-variant">
-              Services &amp; Rituals
-            </span>
-            <span className="material-symbols-outlined text-[14px] text-outline">chevron_right</span>
-            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
-              Master Catalog
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-secondary-container text-on-secondary-fixed text-[11px] font-semibold tracking-wider uppercase ml-1">
-              <span className="material-symbols-outlined text-[13px] text-primary">verified</span>
-              Global Sanctuary Protocol
-            </span>
-          </div>
-          <div className="flex items-center gap-2 bg-surface-container-low px-3 py-1.5 rounded-full shadow-sm">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
-            </span>
-            <span className="text-xs text-on-surface uppercase tracking-wider font-medium">
-              Live Sync • 3 Branches Connected
-            </span>
-          </div>
-        </div>
-
-        {/* Editorial Hero Title Bar */}
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-6">
-          <div className="max-w-3xl">
-            <h1 className="font-serif text-3xl sm:text-4xl text-on-surface tracking-tight leading-tight">
-              Sanctuary Service Rituals &amp; Treatment Catalog
+        {/* Minimalist Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b border-[#2C2724]">
+          <div>
+            <div className="flex items-center gap-2 text-[10px] text-stone-400 uppercase tracking-widest font-semibold">
+              <span>Catalog / ዝርዝር</span>
+              <span>•</span>
+              <span className="text-[#D4AF37]">Dynamic Pricing / ዋጋዎች</span>
+            </div>
+            <h1 className="text-2xl font-serif text-[#FAF7F2] font-semibold tracking-tight mt-0.5">
+              Services / አገልግሎቶች
             </h1>
-            <p className="text-sm sm:text-base text-secondary mt-1.5 leading-relaxed">
-              Configure master beauty rituals, branch pricing tiers, specialist requirements, and booking eligibility across Addis Ababa sanctuaries.
-            </p>
           </div>
-          <div className="flex items-center gap-3 self-start lg:self-end shrink-0 flex-wrap">
+
+          <div className="flex items-center gap-2">
             <Link
-              to="/admin/services/branch-governance"
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface text-xs font-semibold uppercase tracking-wider shadow-sm transition-all border border-surface-container-high"
+              to="/admin/services/pricing"
+              className="px-3.5 py-2 rounded-lg bg-[#181412] hover:bg-[#2C2724] text-xs font-semibold uppercase tracking-wider text-stone-300 border border-[#2C2724] transition flex items-center gap-1.5"
             >
-              <span className="material-symbols-outlined text-[18px] text-primary">tune</span>
-              <span>Branch Governance</span>
+              <span className="material-symbols-outlined text-[16px] text-[#D4AF37]">payments</span>
+              <span>Pricing / ዋጋዎች</span>
             </Link>
             <button
-              onClick={() => navigate('/admin/services/create')}
-              className="group relative inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary-container text-on-primary-container text-xs font-bold uppercase tracking-[0.08em] shadow-[0_0_20px_2px_rgba(212,175,55,0.28)] hover:bg-primary-fixed-dim transition-all active:scale-[0.98]"
               type="button"
+              onClick={openCreateModal}
+              className="px-4 py-2 rounded-lg bg-[#D4AF37] hover:bg-[#C59A3F] text-[#0E0B09] text-xs font-bold uppercase tracking-wider transition flex items-center gap-1.5 shadow-md"
             >
-              <span className="material-symbols-outlined text-[19px] transition-transform group-hover:rotate-90">
-                add
-              </span>
-              <span>+ Create Service Ritual</span>
+              <span className="material-symbols-outlined text-[16px]">add</span>
+              <span>+ New / አዲስ</span>
             </button>
           </div>
         </div>
 
-        {/* Statistics KPI Bar (Tier 1 Surface Cards) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {/* Card 1 */}
-          <div className="bg-surface-container-lowest rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow group border border-surface-container-high/60">
-            <div className="flex items-start justify-between">
-              <div>
-                <span className="text-[11px] uppercase tracking-[0.16em] text-secondary font-medium">
-                  Total Rituals
-                </span>
-                <div className="flex items-baseline gap-2 mt-1">
-                  <span className="font-serif text-3xl text-on-surface font-semibold tracking-tight">24</span>
-                  <span className="text-xs text-primary uppercase font-bold">Rituals</span>
-                </div>
-              </div>
-              <div className="w-10 h-10 rounded-lg bg-surface-container-low flex items-center justify-center text-primary group-hover:bg-primary-fixed transition-colors">
-                <span className="material-symbols-outlined text-[22px]">auto_awesome</span>
-              </div>
-            </div>
-            <div className="mt-3 pt-2 border-t border-surface-container-high/40 flex items-center justify-between text-secondary">
-              <span className="text-xs">+2 seasonal added</span>
-              <span className="text-[11px] uppercase tracking-wider text-on-surface-variant font-medium">
-                5 Signature Guilds
-              </span>
-            </div>
+        {/* KPI Strip (Zero dummy text) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          <div className="bg-[#181412] p-4 rounded-xl border border-[#2C2724]">
+            <span className="text-[10px] uppercase tracking-wider text-stone-400 font-medium">Total / ጠቅላላ</span>
+            <div className="text-2xl font-serif font-bold text-[#FAF7F2] mt-1">{totalCount}</div>
+          </div>
+          <div className="bg-[#181412] p-4 rounded-xl border border-[#2C2724]">
+            <span className="text-[10px] uppercase tracking-wider text-stone-400 font-medium">Active / ንቁ</span>
+            <div className="text-2xl font-serif font-bold text-[#D4AF37] mt-1">{activeCount}</div>
+          </div>
+          <div className="bg-[#181412] p-4 rounded-xl border border-[#2C2724]">
+            <span className="text-[10px] uppercase tracking-wider text-stone-400 font-medium">Inactive / ቦዘኔ</span>
+            <div className="text-2xl font-serif font-bold text-stone-400 mt-1">{inactiveCount}</div>
+          </div>
+          <div className="bg-[#181412] p-4 rounded-xl border border-[#2C2724]">
+            <span className="text-[10px] uppercase tracking-wider text-stone-400 font-medium">Categories / ምድቦች</span>
+            <div className="text-2xl font-serif font-bold text-[#FAF7F2] mt-1">{distinctCategories.length}</div>
+          </div>
+        </div>
+
+        {/* Controls Ribbon */}
+        <div className="bg-[#181412] p-3 rounded-xl border border-[#2C2724] mb-6 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+          {/* Search */}
+          <div className="relative flex-1">
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-stone-500 text-[18px]">
+              search
+            </span>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search / ፈልግ..."
+              className="w-full h-10 pl-9 pr-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] placeholder-stone-500 border border-[#2C2724] focus:outline-none focus:border-[#D4AF37]"
+            />
           </div>
 
-          {/* Card 2 */}
-          <div className="bg-surface-container-lowest rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow group border border-surface-container-high/60">
-            <div className="flex items-start justify-between">
-              <div>
-                <span className="text-[11px] uppercase tracking-[0.16em] text-secondary font-medium">
-                  Instant Booking
-                </span>
-                <div className="flex items-baseline gap-2 mt-1">
-                  <span className="font-serif text-3xl text-on-surface font-semibold tracking-tight">21</span>
-                  <span className="text-xs text-primary uppercase font-bold">Active</span>
-                </div>
-              </div>
-              <div className="w-10 h-10 rounded-lg bg-surface-container-low flex items-center justify-center text-primary group-hover:bg-primary-fixed transition-colors">
-                <span className="material-symbols-outlined text-[22px]">calendar_today</span>
-              </div>
-            </div>
-            <div className="mt-3 pt-2 border-t border-surface-container-high/40 flex items-center justify-between">
-              <span className="text-xs text-secondary">91.6% available live</span>
-              <div className="w-16 h-2 bg-surface-container-high rounded-full overflow-hidden">
-                <div className="h-full bg-primary rounded-full" style={{ width: '91.6%' }} />
-              </div>
-            </div>
-          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Branch Filter */}
+            <select
+              value={selectedBranch}
+              onChange={(e) => setSelectedBranch(e.target.value)}
+              className="h-10 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] font-semibold uppercase tracking-wider border border-[#2C2724] focus:outline-none focus:border-[#D4AF37] cursor-pointer"
+            >
+              <option value="all">All Branches / ሁሉም</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
 
-          {/* Card 3 */}
-          <div className="bg-surface-container-lowest rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow group border border-surface-container-high/60">
-            <div className="flex items-start justify-between">
-              <div>
-                <span className="text-[11px] uppercase tracking-[0.16em] text-secondary font-medium">
-                  Inactive / Seasonal
-                </span>
-                <div className="flex items-baseline gap-2 mt-1">
-                  <span className="font-serif text-3xl text-on-surface font-semibold tracking-tight">3</span>
-                  <span className="text-xs text-secondary uppercase font-bold">Inactive</span>
-                </div>
-              </div>
-              <div className="w-10 h-10 rounded-lg bg-surface-container-low flex items-center justify-center text-secondary group-hover:bg-secondary-container transition-colors">
-                <span className="material-symbols-outlined text-[22px]">archive</span>
-              </div>
-            </div>
-            <div className="mt-3 pt-2 border-t border-surface-container-high/40 flex items-center justify-between text-secondary">
-              <span className="text-xs text-outline">Preserved audit logs</span>
-              <span className="text-[11px] uppercase tracking-wider text-secondary">84 Records</span>
-            </div>
-          </div>
+            {/* Status Filter */}
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+              className="h-10 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] font-semibold uppercase tracking-wider border border-[#2C2724] focus:outline-none focus:border-[#D4AF37] cursor-pointer"
+            >
+              <option value="all">All / ሁሉም</option>
+              <option value="active">Active / ንቁ</option>
+              <option value="inactive">Inactive / ቦዘኔ</option>
+            </select>
 
-          {/* Card 4 */}
-          <div className="bg-surface-container-lowest rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow group border border-surface-container-high/60">
-            <div className="flex items-start justify-between">
-              <div>
-                <span className="text-[11px] uppercase tracking-[0.16em] text-secondary font-medium">
-                  Sanctuary Mesh
-                </span>
-                <div className="flex items-baseline gap-2 mt-1">
-                  <span className="font-serif text-3xl text-on-surface font-semibold tracking-tight">100%</span>
-                  <span className="text-xs text-primary uppercase font-bold">Core Coverage</span>
-                </div>
-              </div>
-              <div className="w-10 h-10 rounded-lg bg-surface-container-low flex items-center justify-center text-primary group-hover:bg-primary-fixed transition-colors">
-                <span className="material-symbols-outlined text-[22px]">domain</span>
-              </div>
-            </div>
-            <div className="mt-3 pt-2 border-t border-surface-container-high/40 flex items-center justify-between text-[11px] uppercase tracking-wider text-on-surface-variant font-medium">
-              <span>Bole: 22</span>
-              <span>•</span>
-              <span>Kazanchis: 20</span>
-              <span>•</span>
-              <span>CMC: 19</span>
+            {/* View Mode Toggle */}
+            <div className="flex items-center bg-[#0E0B09] rounded-lg p-1 border border-[#2C2724]">
+              <button
+                type="button"
+                onClick={() => setViewMode('grid')}
+                className={`p-1.5 rounded transition ${
+                  viewMode === 'grid' ? 'bg-[#181412] text-[#D4AF37]' : 'text-stone-400 hover:text-white'
+                }`}
+                title="Grid View"
+              >
+                <span className="material-symbols-outlined text-[18px]">grid_view</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('table')}
+                className={`p-1.5 rounded transition ${
+                  viewMode === 'table' ? 'bg-[#181412] text-[#D4AF37]' : 'text-stone-400 hover:text-white'
+                }`}
+                title="Table View"
+              >
+                <span className="material-symbols-outlined text-[18px]">view_agenda</span>
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Search, Filter & View Controls Ribbon */}
-        <div className="bg-surface-container-lowest rounded-xl p-4 shadow-sm mb-6 flex flex-col gap-4 border border-surface-container-high/60">
-          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
-            {/* Search Field */}
-            <div className="relative flex-1">
-              <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-outline text-[20px] pointer-events-none">
-                search
-              </span>
-              <input
-                id="serviceSearch"
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search rituals by name, Amharic title, code, or treatment category..."
-                className="w-full h-11 pl-11 pr-4 rounded-xl bg-surface-container-low text-on-surface placeholder:text-outline text-xs sm:text-sm focus:outline-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary shadow-inner"
-              />
-            </div>
-
-            {/* Quick Dropdowns & View Mode Switcher */}
-            <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
-              {/* Branch Filter */}
-              <div className="relative min-w-[170px] flex-1 sm:flex-initial">
-                <select
-                  value={selectedBranch}
-                  onChange={(e) => setSelectedBranch(e.target.value)}
-                  className="w-full h-11 px-3.5 pr-8 rounded-xl bg-surface-container-low text-on-surface text-xs font-semibold uppercase tracking-wider appearance-none focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer shadow-inner"
-                >
-                  <option value="all">All Branches (3)</option>
-                  <option value="bole-bulbula">Bole Bulbula Suite</option>
-                  <option value="kazanchis">Kazanchis VIP Sanctuary</option>
-                  <option value="cmc">CMC Luxury Pavilions</option>
-                </select>
-                <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-outline pointer-events-none text-[18px]">
-                  expand_more
-                </span>
-              </div>
-
-              {/* Status Filter */}
-              <div className="relative min-w-[140px] flex-1 sm:flex-initial">
-                <select
-                  value={selectedStatus}
-                  onChange={(e) => setSelectedStatus(e.target.value)}
-                  className="w-full h-11 px-3.5 pr-8 rounded-xl bg-surface-container-low text-on-surface text-xs font-semibold uppercase tracking-wider appearance-none focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer shadow-inner"
-                >
-                  <option value="all">All Statuses</option>
-                  <option value="active">Active Only</option>
-                  <option value="inactive">Inactive / Archive</option>
-                </select>
-                <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-outline pointer-events-none text-[18px]">
-                  expand_more
-                </span>
-              </div>
-
-              {/* Layout View Toggle */}
-              <div className="flex items-center bg-surface-container-low rounded-xl p-1 shrink-0 shadow-inner">
-                <button
-                  id="btnGridView"
-                  onClick={() => setViewMode('grid')}
-                  className={`p-2 rounded-lg transition-all ${
-                    viewMode === 'grid'
-                      ? 'bg-surface-container-lowest text-primary shadow-sm'
-                      : 'text-secondary hover:text-on-surface'
-                  }`}
-                  title="Refined Data Grid View"
-                  type="button"
-                >
-                  <span className="material-symbols-outlined text-[19px]">grid_view</span>
-                </button>
-                <button
-                  id="btnTableView"
-                  onClick={() => setViewMode('table')}
-                  className={`p-2 rounded-lg transition-all ${
-                    viewMode === 'table'
-                      ? 'bg-surface-container-lowest text-primary shadow-sm'
-                      : 'text-secondary hover:text-on-surface'
-                  }`}
-                  title="Master Table View"
-                  type="button"
-                >
-                  <span className="material-symbols-outlined text-[19px]">view_agenda</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Category Pill Carousel */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 -mx-1 px-1 no-scrollbar">
-            {categories.map((c) => {
-              const isActive = selectedCategory === c.key;
-              return (
-                <button
-                  key={c.key}
-                  type="button"
-                  onClick={() => setSelectedCategory(c.key)}
-                  className={`shrink-0 px-4 py-1.5 rounded-full text-xs uppercase tracking-wider font-semibold transition-all ${
-                    isActive
-                      ? 'bg-inverse-surface text-primary-fixed-dim shadow-sm'
-                      : 'bg-surface-container-low hover:bg-surface-container text-secondary'
-                  }`}
-                >
-                  {c.label} ({c.count})
-                </button>
-              );
-            })}
-          </div>
+        {/* Category Filter Pills */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-6 no-scrollbar">
+          <button
+            type="button"
+            onClick={() => setSelectedCategory('All')}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wider shrink-0 transition ${
+              selectedCategory === 'All'
+                ? 'bg-[#D4AF37] text-[#0E0B09]'
+                : 'bg-[#181412] text-stone-400 hover:text-white border border-[#2C2724]'
+            }`}
+          >
+            All / ሁሉም ({totalCount})
+          </button>
+          {distinctCategories.map((cat) => {
+            const count = services.filter((s) => s.category === cat).length;
+            const isSelected = selectedCategory === cat;
+            return (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wider shrink-0 transition ${
+                  isSelected
+                    ? 'bg-[#D4AF37] text-[#0E0B09]'
+                    : 'bg-[#181412] text-stone-400 hover:text-white border border-[#2C2724]'
+                }`}
+              >
+                {cat} ({count})
+              </button>
+            );
+          })}
         </div>
 
-        {/* Loading State */}
+        {/* Loading Spinner */}
         {loading && (
-          <div className="flex items-center justify-center py-16">
-            <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+          <div className="flex items-center justify-center py-20">
+            <div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" />
           </div>
         )}
 
         {/* Empty State */}
         {!loading && services.length === 0 && (
-          <div className="bg-surface-container-lowest rounded-xl p-12 text-center border border-dashed border-outline-variant">
-            <span className="material-symbols-outlined text-4xl text-outline mb-2">spa</span>
-            <h3 className="font-serif text-lg text-on-surface font-semibold">No rituals found</h3>
-            <p className="text-sm text-secondary mt-1">Try broadening your search query or branch filters.</p>
+          <div className="bg-[#181412] rounded-xl p-12 text-center border border-dashed border-[#2C2724]">
+            <span className="material-symbols-outlined text-4xl text-stone-600 mb-2">spa</span>
+            <h3 className="font-serif text-base text-[#FAF7F2] font-semibold">No services found / አገልግሎት አልተገኘም</h3>
+            <p className="text-xs text-stone-400 mt-1">Try adjusting search or filters.</p>
           </div>
         )}
 
         {/* GRID VIEW */}
         {!loading && viewMode === 'grid' && services.length > 0 && (
-          <div id="catalogDisplay" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mb-8">
-            {services.map((ritual) => {
-              const displayPrice = ritual.effectivePrice ?? ritual.basePrice;
-              const bolePrice =
-                ritual.branchServices?.find((b) => b.branchId.includes('bole') || b.branch?.slug.includes('bole'))
-                  ?.customPrice ?? ritual.basePrice;
-              const kazanPrice =
-                ritual.branchServices?.find((b) => b.branchId.includes('kazan') || b.branch?.slug.includes('kazan'))
-                  ?.customPrice ?? ritual.basePrice;
-              const cmcPrice =
-                ritual.branchServices?.find((b) => b.branchId.includes('cmc') || b.branch?.slug.includes('cmc'))
-                  ?.customPrice ?? ritual.basePrice;
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+            {services.map((s) => {
+              const displayPrice = Number(s.effectivePrice ?? s.basePrice);
+              const depositLabel =
+                s.depositType === 'NONE'
+                  ? 'No Deposit / ያለ ቅድመ ክፍያ'
+                  : s.depositType === 'PERCENTAGE'
+                  ? `${s.depositValue}% Deposit`
+                  : `${s.depositValue} ETB Deposit`;
 
               return (
                 <div
-                  key={ritual.id}
-                  className="service-card flex flex-col bg-surface-container-lowest rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 group border border-surface-container-high/60"
+                  key={s.id}
+                  className="bg-[#181412] rounded-xl overflow-hidden border border-[#2C2724] hover:border-[#D4AF37]/50 transition flex flex-col justify-between shadow-sm"
                 >
-                  {/* Media Header */}
-                  <div className="relative h-52 w-full overflow-hidden bg-surface-container">
+                  {/* Image & Header */}
+                  <div className="relative h-44 w-full bg-[#0E0B09] overflow-hidden">
                     <img
                       src={
-                        ritual.imageUrl ||
+                        s.imageUrl ||
                         'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=800&q=80'
                       }
-                      alt={ritual.name}
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                      alt={s.name}
+                      className="w-full h-full object-cover"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-inverse-surface/85 via-inverse-surface/30 to-transparent" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#181412] via-transparent to-black/40" />
 
-                    {/* Status & Code Overlays */}
-                    <div className="absolute top-3 left-3 flex items-center gap-1.5 flex-wrap">
-                      <span className="px-2.5 py-1 rounded-full bg-inverse-surface/90 text-primary-fixed-dim text-[11px] font-bold uppercase tracking-wider backdrop-blur-md">
-                        #{ritual.code}
+                    {/* Top Badges */}
+                    <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 flex-wrap">
+                      <span className="px-2 py-0.5 rounded bg-black/80 text-[#D4AF37] font-mono text-[10px] font-bold">
+                        #{s.code || s.slug?.slice(0, 8)}
                       </span>
-                      <span className="px-2.5 py-1 rounded-full bg-primary-container text-on-primary-container text-[11px] font-bold uppercase tracking-wider shadow-sm">
-                        {ritual.category.split('&')[0].trim()}
+                      <span className="px-2 py-0.5 rounded bg-[#181412]/90 text-stone-300 text-[10px] font-semibold uppercase">
+                        {s.category.split('&')[0].trim()}
                       </span>
                     </div>
 
-                    <div className="absolute top-3 right-3">
+                    <div className="absolute top-2.5 right-2.5">
                       <span
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider backdrop-blur-md ${
-                          ritual.status
-                            ? 'bg-surface-container-lowest/90 text-primary'
-                            : 'bg-error-container/90 text-error'
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          s.status
+                            ? 'bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/40'
+                            : 'bg-red-950/40 text-red-400 border border-red-900/40'
                         }`}
                       >
-                        <span
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            ritual.status ? 'bg-primary animate-pulse' : 'bg-error'
-                          }`}
-                        />
-                        {ritual.status ? 'Active' : 'Inactive'}
+                        {s.status ? 'Active / ንቁ' : 'Inactive / ቦዘኔ'}
                       </span>
                     </div>
 
-                    <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between text-surface-bright">
-                      <div className="max-w-[70%]">
-                        <span className="text-[10px] text-surface-dim uppercase tracking-widest block">
-                          Amharic Protocol
-                        </span>
-                        <span className="font-serif text-base sm:text-lg text-surface-bright leading-tight truncate block">
-                          {ritual.amharicName || ritual.name}
+                    {/* Bottom Amharic Title & Price */}
+                    <div className="absolute bottom-2 left-3 right-3 flex items-end justify-between">
+                      <div className="truncate max-w-[65%]">
+                        <span className="text-[11px] font-serif text-stone-300 truncate block">
+                          {s.nameAm || s.amharicName || '—'}
                         </span>
                       </div>
                       <div className="text-right">
-                        <span className="text-[10px] uppercase tracking-wider text-primary-fixed block">
-                          From
-                        </span>
-                        <div className="font-serif text-lg sm:text-xl text-surface-bright font-bold">
+                        <span className="text-base font-bold text-[#D4AF37] font-serif">
                           {displayPrice.toLocaleString()}{' '}
-                          <span className="text-xs font-normal">ETB</span>
-                        </div>
+                          <span className="text-[10px] text-stone-400 font-sans">ETB</span>
+                        </span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Card Core Information */}
-                  <div className="p-5 flex-1 flex flex-col justify-between">
+                  {/* Body Details */}
+                  <div className="p-4 flex-1 flex flex-col justify-between">
                     <div>
-                      <div className="flex items-start justify-between gap-2">
-                        <h2 className="font-serif text-lg text-on-surface font-semibold group-hover:text-primary transition-colors leading-snug">
-                          {ritual.name}
-                        </h2>
-                      </div>
-                      <p className="text-xs text-secondary mt-1 line-clamp-2 leading-relaxed">
-                        {ritual.description || 'Exclusive luxury salon treatment and styling protocol.'}
-                      </p>
+                      <h3 className="font-serif text-base font-bold text-[#FAF7F2] leading-snug line-clamp-1">
+                        {s.name}
+                      </h3>
 
-                      {/* Specifications Row */}
-                      <div className="flex items-center justify-between py-2 mt-3 bg-surface-container-low rounded-lg px-3 text-xs text-secondary">
-                        <div className="flex items-center gap-1.5">
-                          <span className="material-symbols-outlined text-[16px] text-primary">schedule</span>
-                          <span className="font-medium">
-                            {ritual.durationMinutes} min{' '}
-                            <span className="text-outline text-[11px]">
-                              (+{ritual.turnaroundBuffer} buffer)
-                            </span>
-                          </span>
-                        </div>
-                        <div className="w-px h-3.5 bg-outline-variant" />
-                        <div className="flex items-center gap-1.5">
-                          <span className="material-symbols-outlined text-[16px] text-primary">
-                            person_celebrate
-                          </span>
-                          <span className="font-medium">
-                            {ritual.assignedEmployees?.length || 4} Specialists
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Multi-Branch Tier Matrix */}
-                      <div className="mt-3.5 flex flex-col gap-1.5">
-                        <span className="text-[10px] uppercase tracking-[0.14em] text-outline font-semibold">
-                          Branch Pricing &amp; Tiers
+                      <div className="flex items-center justify-between text-xs text-stone-400 mt-3 pt-2 border-t border-[#2C2724]">
+                        <span className="flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[14px] text-[#D4AF37]">schedule</span>
+                          {s.durationMinutes} min / ደቂቃ
                         </span>
-                        <div className="grid grid-cols-3 gap-1.5 text-center">
-                          <div className="p-1.5 rounded-lg bg-surface-container-low border border-surface-container-high">
-                            <span className="text-[9px] text-secondary uppercase block font-semibold">Bole</span>
-                            <span className="text-xs font-bold text-on-surface">{bolePrice} ETB</span>
-                          </div>
-                          <div className="p-1.5 rounded-lg bg-surface-container-low border border-surface-container-high">
-                            <span className="text-[9px] text-secondary uppercase block font-semibold">
-                              Kazanchis
-                            </span>
-                            <span className="text-xs font-bold text-on-surface">{kazanPrice} ETB</span>
-                          </div>
-                          <div className="p-1.5 rounded-lg bg-surface-container-low border border-surface-container-high">
-                            <span className="text-[9px] text-secondary uppercase block font-semibold">CMC</span>
-                            <span className="text-xs font-bold text-on-surface">{cmcPrice} ETB</span>
-                          </div>
-                        </div>
+                        <span className="text-[11px] text-stone-400 font-medium">{depositLabel}</span>
                       </div>
                     </div>
 
-                    {/* Card Actions Footer */}
-                    <div className="mt-4 pt-3 border-t border-surface-container-high flex items-center justify-between gap-2">
-                      <Link
-                        to={`/admin/services/${ritual.id}`}
-                        className="flex-1 text-center py-2 px-3 rounded-lg bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold uppercase tracking-wider transition-colors shadow-sm"
-                      >
-                        View Dossier
-                      </Link>
+                    {/* Actions */}
+                    <div className="mt-4 pt-3 border-t border-[#2C2724] flex items-center justify-between gap-2">
                       <button
                         type="button"
-                        onClick={() => handleToggleStatus(ritual.id, ritual.name)}
-                        className={`p-2 rounded-lg transition-colors ${
-                          ritual.status
-                            ? 'bg-surface-container-low hover:bg-error-container hover:text-error text-secondary'
-                            : 'bg-primary-container text-on-primary-container'
-                        }`}
-                        title={ritual.status ? 'Deactivate Ritual' : 'Reactivate Ritual'}
+                        onClick={() => openEditModal(s)}
+                        className="flex-1 py-1.5 px-2 rounded bg-[#2C2724] hover:bg-[#38322e] text-[#FAF7F2] text-xs font-semibold uppercase tracking-wider text-center transition"
                       >
-                        <span className="material-symbols-outlined text-[18px]">
-                          {ritual.status ? 'toggle_on' : 'toggle_off'}
-                        </span>
+                        Edit / አድስ
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleStatus(s.id, s.name)}
+                        className={`py-1.5 px-3 rounded text-xs font-semibold uppercase tracking-wider transition ${
+                          s.status
+                            ? 'bg-[#2C2724] hover:bg-red-950/40 text-stone-300 hover:text-red-400'
+                            : 'bg-[#D4AF37] text-[#0E0B09]'
+                        }`}
+                        title="Toggle Status"
+                      >
+                        {s.status ? 'Deactivate' : 'Activate'}
                       </button>
                       <Link
-                        to="/admin/services/branch-governance"
-                        className="p-2 rounded-lg bg-surface-container-low hover:bg-surface-container text-secondary transition-colors"
-                        title="Configure Branch Rules"
+                        to={`/admin/services/pricing?serviceId=${s.id}`}
+                        className="p-1.5 rounded bg-[#2C2724] hover:bg-[#38322e] text-[#D4AF37]"
+                        title="Branch Pricing / ዋጋዎች"
                       >
-                        <span className="material-symbols-outlined text-[18px]">tune</span>
+                        <span className="material-symbols-outlined text-[16px]">payments</span>
                       </Link>
                     </div>
                   </div>
@@ -537,109 +492,86 @@ export const ServiceCatalogPage: React.FC = () => {
           </div>
         )}
 
-        {/* MASTER TABLE VIEW */}
+        {/* TABLE VIEW */}
         {!loading && viewMode === 'table' && services.length > 0 && (
-          <div className="bg-surface-container-lowest rounded-xl shadow-sm border border-surface-container-high/60 overflow-hidden mb-8">
+          <div className="bg-[#181412] rounded-xl border border-[#2C2724] overflow-hidden mb-8">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-surface-container-low text-on-surface-variant uppercase tracking-wider font-semibold border-b border-surface-container-high">
+                <thead className="bg-[#0E0B09] text-stone-400 uppercase tracking-wider font-semibold border-b border-[#2C2724]">
                   <tr>
-                    <th className="py-3 px-4">Code</th>
-                    <th className="py-3 px-4">Ritual Nomenclature &amp; Ge'ez</th>
-                    <th className="py-3 px-4">Department Guild</th>
-                    <th className="py-3 px-4">Timing</th>
-                    <th className="py-3 px-4">Branch Pricing Matrix</th>
-                    <th className="py-3 px-4">Specialists</th>
-                    <th className="py-3 px-4 text-center">Status</th>
-                    <th className="py-3 px-4 text-right">Actions</th>
+                    <th className="py-3 px-4">Code / ኮድ</th>
+                    <th className="py-3 px-4">Service / አገልግሎት</th>
+                    <th className="py-3 px-4">Category / ምድብ</th>
+                    <th className="py-3 px-4">Duration / ቆይታ</th>
+                    <th className="py-3 px-4">Price / ዋጋ</th>
+                    <th className="py-3 px-4">Deposit / ቅድመ ክፍያ</th>
+                    <th className="py-3 px-4 text-center">Status / ሁኔታ</th>
+                    <th className="py-3 px-4 text-right">Actions / እርምጃዎች</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-surface-container-high">
-                  {services.map((ritual) => {
-                    const bolePrice =
-                      ritual.branchServices?.find((b) => b.branchId.includes('bole'))?.customPrice ??
-                      ritual.basePrice;
-                    const kazanPrice =
-                      ritual.branchServices?.find((b) => b.branchId.includes('kazan'))?.customPrice ??
-                      ritual.basePrice;
-                    const cmcPrice =
-                      ritual.branchServices?.find((b) => b.branchId.includes('cmc'))?.customPrice ??
-                      ritual.basePrice;
-
+                <tbody className="divide-y divide-[#2C2724]">
+                  {services.map((s) => {
+                    const displayPrice = Number(s.effectivePrice ?? s.basePrice);
                     return (
-                      <tr key={ritual.id} className="hover:bg-surface-container-low/50 transition-colors">
-                        <td className="py-3 px-4 font-mono font-bold text-primary">#{ritual.code}</td>
+                      <tr key={s.id} className="hover:bg-[#201B18] transition">
+                        <td className="py-3 px-4 font-mono font-bold text-[#D4AF37]">
+                          #{s.code || s.slug?.slice(0, 8)}
+                        </td>
                         <td className="py-3 px-4">
-                          <Link
-                            to={`/admin/services/${ritual.id}`}
-                            className="font-serif font-semibold text-sm text-on-surface hover:text-primary transition-colors block"
-                          >
-                            {ritual.name}
-                          </Link>
-                          <span className="font-serif text-secondary text-[11px] block italic">
-                            {ritual.amharicName || '—'}
+                          <span className="font-serif font-bold text-sm text-[#FAF7F2] block">{s.name}</span>
+                          <span className="text-[11px] text-stone-400 block font-serif">
+                            {s.nameAm || s.amharicName || '—'}
                           </span>
                         </td>
                         <td className="py-3 px-4">
-                          <span className="px-2 py-0.5 rounded-full bg-secondary-container text-on-secondary-fixed text-[10px] font-semibold uppercase tracking-wider">
-                            {ritual.category}
+                          <span className="px-2 py-0.5 rounded bg-[#2C2724] text-stone-300 text-[10px] font-semibold uppercase">
+                            {s.category}
                           </span>
                         </td>
-                        <td className="py-3 px-4">
-                          <div className="font-semibold text-on-surface">{ritual.durationMinutes} min</div>
-                          <div className="text-[10px] text-outline">+{ritual.turnaroundBuffer}m buffer</div>
+                        <td className="py-3 px-4 font-medium text-stone-300">{s.durationMinutes} min</td>
+                        <td className="py-3 px-4 font-bold text-[#D4AF37] font-serif">
+                          {displayPrice.toLocaleString()} ETB
                         </td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2 text-[11px]">
-                            <span className="font-medium text-secondary">
-                              Bole: <strong className="text-on-surface">{bolePrice}</strong>
-                            </span>
-                            <span>•</span>
-                            <span className="font-medium text-secondary">
-                              Kaz: <strong className="text-on-surface">{kazanPrice}</strong>
-                            </span>
-                            <span>•</span>
-                            <span className="font-medium text-secondary">
-                              CMC: <strong className="text-on-surface">{cmcPrice} ETB</strong>
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4 font-medium text-on-surface">
-                          {ritual.assignedEmployees?.length || 4} Certified
+                        <td className="py-3 px-4 text-stone-400">
+                          {s.depositType === 'NONE'
+                            ? 'None'
+                            : s.depositType === 'PERCENTAGE'
+                            ? `${s.depositValue}%`
+                            : `${s.depositValue} ETB`}
                         </td>
                         <td className="py-3 px-4 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleToggleStatus(ritual.id, ritual.name)}
-                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                              ritual.status
-                                ? 'bg-primary-container text-on-primary-container'
-                                : 'bg-surface-container-high text-secondary'
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              s.status
+                                ? 'bg-[#D4AF37]/20 text-[#D4AF37]'
+                                : 'bg-red-950/40 text-red-400'
                             }`}
                           >
-                            <span
-                              className={`w-1.5 h-1.5 rounded-full ${
-                                ritual.status ? 'bg-primary animate-pulse' : 'bg-outline'
-                              }`}
-                            />
-                            {ritual.status ? 'Active' : 'Inactive'}
-                          </button>
+                            {s.status ? 'Active / ንቁ' : 'Inactive / ቦዘኔ'}
+                          </span>
                         </td>
                         <td className="py-3 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
-                            <Link
-                              to={`/admin/services/${ritual.id}`}
-                              className="p-1.5 rounded-lg bg-surface-container-high hover:bg-surface-container-highest text-on-surface"
-                              title="View Dossier"
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(s)}
+                              className="px-2 py-1 rounded bg-[#2C2724] hover:bg-[#38322e] text-xs font-semibold text-stone-200"
                             >
-                              <span className="material-symbols-outlined text-[16px]">visibility</span>
-                            </Link>
-                            <Link
-                              to="/admin/services/branch-governance"
-                              className="p-1.5 rounded-lg bg-surface-container-low hover:bg-surface-container text-secondary"
-                              title="Branch Governance"
+                              Edit / አድስ
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleStatus(s.id, s.name)}
+                              className="px-2 py-1 rounded bg-[#2C2724] hover:bg-[#38322e] text-xs font-semibold text-stone-400 hover:text-white"
                             >
-                              <span className="material-symbols-outlined text-[16px]">tune</span>
+                              Toggle / ቀይር
+                            </button>
+                            <Link
+                              to={`/admin/services/pricing?serviceId=${s.id}`}
+                              className="p-1 rounded bg-[#2C2724] hover:bg-[#38322e] text-[#D4AF37]"
+                              title="Pricing / ዋጋዎች"
+                            >
+                              <span className="material-symbols-outlined text-[16px]">payments</span>
                             </Link>
                           </div>
                         </td>
@@ -651,10 +583,248 @@ export const ServiceCatalogPage: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* CREATE / EDIT MODAL */}
+        {modalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+            <div className="bg-[#181412] w-full max-w-xl rounded-2xl border border-[#2C2724] shadow-2xl p-6 text-[#FAF7F2] max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between pb-3 border-b border-[#2C2724] mb-4">
+                <h2 className="text-lg font-serif font-bold text-[#FAF7F2]">
+                  {editingService ? 'Edit Service / አገልግሎት አድስ' : 'New Service / አዲስ አገልግሎት'}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setModalOpen(false)}
+                  className="text-stone-400 hover:text-white"
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveService} className="space-y-4">
+                {/* Name EN */}
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wider text-stone-400 font-semibold mb-1">
+                    Name (EN) / ስም *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formName}
+                    onChange={(e) => setFormName(e.target.value)}
+                    placeholder="e.g. Royal Bridal Crown Updo"
+                    className="w-full h-10 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] border border-[#2C2724] focus:outline-none focus:border-[#D4AF37]"
+                  />
+                </div>
+
+                {/* Name Amharic */}
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wider text-stone-400 font-semibold mb-1">
+                    Name (አማ) / ስም በአማርኛ
+                  </label>
+                  <input
+                    type="text"
+                    value={formNameAm}
+                    onChange={(e) => setFormNameAm(e.target.value)}
+                    placeholder="ለምሳሌ፡ የሙሽራ የፀጉር አሰራር"
+                    className="w-full h-10 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] border border-[#2C2724] focus:outline-none focus:border-[#D4AF37]"
+                  />
+                </div>
+
+                {/* Category Selection */}
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wider text-stone-400 font-semibold mb-1">
+                    Category / ምድብ
+                  </label>
+                  <select
+                    value={formCategory}
+                    onChange={(e) => setFormCategory(e.target.value)}
+                    className="w-full h-10 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] border border-[#2C2724] focus:outline-none focus:border-[#D4AF37]"
+                  >
+                    {DEFAULT_CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                    <option value="OTHER">Custom Category / ሌላ ምድብ</option>
+                  </select>
+                  {formCategory === 'OTHER' && (
+                    <input
+                      type="text"
+                      required
+                      value={formCustomCategory}
+                      onChange={(e) => setFormCustomCategory(e.target.value)}
+                      placeholder="Enter custom category..."
+                      className="w-full h-10 px-3 mt-2 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] border border-[#2C2724] focus:outline-none focus:border-[#D4AF37]"
+                    />
+                  )}
+                </div>
+
+                {/* Duration & Base Price */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] uppercase tracking-wider text-stone-400 font-semibold mb-1">
+                      Base Price (ETB) / መነሻ ዋጋ *
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min={0}
+                      value={formBasePrice}
+                      onChange={(e) => setFormBasePrice(Number(e.target.value))}
+                      className="w-full h-10 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] border border-[#2C2724] focus:outline-none focus:border-[#D4AF37]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] uppercase tracking-wider text-stone-400 font-semibold mb-1">
+                      Duration (min) / ቆይታ *
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min={5}
+                      value={formDuration}
+                      onChange={(e) => setFormDuration(Number(e.target.value))}
+                      className="w-full h-10 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] border border-[#2C2724] focus:outline-none focus:border-[#D4AF37]"
+                    />
+                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                      {DURATION_PRESETS.map((mins) => (
+                        <button
+                          key={mins}
+                          type="button"
+                          onClick={() => setFormDuration(mins)}
+                          className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                            formDuration === mins
+                              ? 'bg-[#D4AF37] text-[#0E0B09]'
+                              : 'bg-[#2C2724] text-stone-400 hover:text-white'
+                          }`}
+                        >
+                          {mins}m
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Deposit Rule */}
+                <div className="p-3 bg-[#0E0B09] rounded-xl border border-[#2C2724]">
+                  <label className="block text-[11px] uppercase tracking-wider text-stone-400 font-semibold mb-2">
+                    Deposit Rule / ቅድመ ክፍያ
+                  </label>
+                  <div className="grid grid-cols-3 gap-2 mb-2">
+                    {(['NONE', 'PERCENTAGE', 'FIXED'] as const).map((type) => (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => setFormDepositType(type)}
+                        className={`py-1.5 px-2 rounded text-xs font-semibold uppercase tracking-wider transition ${
+                          formDepositType === type
+                            ? 'bg-[#D4AF37] text-[#0E0B09]'
+                            : 'bg-[#181412] text-stone-400 hover:text-white border border-[#2C2724]'
+                        }`}
+                      >
+                        {type === 'NONE' ? 'None' : type === 'PERCENTAGE' ? 'Percent (%)' : 'Fixed (ETB)'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {formDepositType !== 'NONE' && (
+                    <div className="mt-2">
+                      <label className="block text-[10px] text-stone-400 font-medium mb-1">
+                        {formDepositType === 'PERCENTAGE' ? 'Deposit Percentage (%):' : 'Fixed Deposit (ETB):'}
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={formDepositType === 'PERCENTAGE' ? 100 : undefined}
+                        value={formDepositValue}
+                        onChange={(e) => setFormDepositValue(Number(e.target.value))}
+                        className="w-full h-9 px-3 rounded-lg bg-[#181412] text-xs text-[#FAF7F2] border border-[#2C2724] focus:outline-none focus:border-[#D4AF37]"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Image Upload / URL */}
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wider text-stone-400 font-semibold mb-1">
+                    Image / ፎቶ
+                  </label>
+                  <div className="flex items-center gap-3">
+                    {formImageUrl && (
+                      <img
+                        src={formImageUrl}
+                        alt="Preview"
+                        className="w-14 h-14 rounded-lg object-cover border border-[#D4AF37]/50 shrink-0"
+                      />
+                    )}
+                    <div className="flex-1 space-y-2">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageFileChange}
+                        disabled={isUploadingImage}
+                        className="block w-full text-xs text-stone-400 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#2C2724] file:text-[#D4AF37] hover:file:bg-[#38322e] cursor-pointer"
+                      />
+                      <input
+                        type="url"
+                        value={formImageUrl}
+                        onChange={(e) => setFormImageUrl(e.target.value)}
+                        placeholder="Or paste image URL / ወይም ምስል URL"
+                        className="w-full h-8 px-3 rounded bg-[#0E0B09] text-xs text-[#FAF7F2] border border-[#2C2724] focus:outline-none focus:border-[#D4AF37]"
+                      />
+                    </div>
+                  </div>
+                  {isUploadingImage && (
+                    <p className="text-[10px] text-[#D4AF37] mt-1 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[12px] animate-spin">sync</span>
+                      Uploading image...
+                    </p>
+                  )}
+                </div>
+
+                {/* Active Status Toggle */}
+                <div className="flex items-center justify-between p-3 bg-[#0E0B09] rounded-xl border border-[#2C2724]">
+                  <div>
+                    <span className="text-xs font-semibold text-[#FAF7F2] block">Service Status / ሁኔታ</span>
+                    <span className="text-[10px] text-stone-400">Available for live booking</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormIsActive(!formIsActive)}
+                    className={`px-3 py-1 rounded text-xs font-bold uppercase transition ${
+                      formIsActive ? 'bg-[#D4AF37] text-[#0E0B09]' : 'bg-[#2C2724] text-stone-400'
+                    }`}
+                  >
+                    {formIsActive ? 'Active / ንቁ' : 'Inactive / ቦዘኔ'}
+                  </button>
+                </div>
+
+                {/* Submit Buttons */}
+                <div className="pt-3 border-t border-[#2C2724] flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setModalOpen(false)}
+                    className="px-4 py-2 rounded-lg bg-[#2C2724] hover:bg-[#38322e] text-xs font-semibold uppercase tracking-wider text-stone-300 transition"
+                  >
+                    Cancel / ሰርዝ
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSaving || isUploadingImage}
+                    className="px-5 py-2 rounded-lg bg-[#D4AF37] hover:bg-[#C59A3F] text-[#0E0B09] text-xs font-bold uppercase tracking-wider transition disabled:opacity-50"
+                  >
+                    {isSaving ? 'Saving...' : 'Save / አስቀምጥ'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </AdminLayout>
   );
 };
 
 export default ServiceCatalogPage;
-

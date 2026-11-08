@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { BranchController } from "./branch.controller";
+import { ServiceController } from "../service/service.controller";
 import {
   authenticate,
   authorize,
   requireBranchAccess,
+  requirePermission,
 } from "../../middleware/auth";
 
 const router = Router();
@@ -81,6 +83,14 @@ router.put(
   authorize("OWNER", "BRANCH_ADMIN"),
   requireBranchAccess,
   BranchController.setBranchHours
+);
+
+// Branch default deposit rule
+router.put(
+  "/:id/deposit-rule",
+  authenticate,
+  requirePermission("manage_prices"),
+  ServiceController.setBranchDepositRule
 );
 
 export default router;

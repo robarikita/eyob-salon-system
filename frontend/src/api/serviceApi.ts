@@ -39,17 +39,53 @@ export interface AssignedSpecialist {
   };
 }
 
+export interface ServicePriceHistoryItem {
+  id: string;
+  serviceId: string;
+  branchId?: string | null;
+  price: number;
+  effectiveFrom: string;
+  changedBy: string;
+  reason?: string | null;
+  branch?: {
+    id: string;
+    name: string;
+  } | null;
+}
+
+export interface BranchPriceItem {
+  id: string;
+  branchId: string;
+  serviceId: string;
+  customPrice: number;
+  customDurationMinutes?: number | null;
+  isActive: boolean;
+  depositType?: 'NONE' | 'FIXED' | 'PERCENTAGE' | null;
+  depositValue?: number | null;
+  branch?: {
+    id: string;
+    name: string;
+  };
+}
+
 export interface ServiceRitual {
   id: string;
   code: string;
   name: string;
+  nameAm?: string | null;
   amharicName?: string | null;
+  slug?: string;
   category: string;
   subCategory?: string | null;
   description?: string | null;
   imageUrl?: string | null;
   basePrice: number;
   durationMinutes: number;
+  depositType?: 'NONE' | 'FIXED' | 'PERCENTAGE';
+  depositValue?: number | null;
+  depositAmount?: number | null;
+  effectiveDepositType?: 'NONE' | 'FIXED' | 'PERCENTAGE';
+  effectiveDepositValue?: number;
   preSetupBuffer: number;
   turnaroundBuffer: number;
   workstationType?: string | null;
@@ -58,6 +94,8 @@ export interface ServiceRitual {
   requiredProtocols: string[];
   standardCommission?: number | null;
   status: boolean;
+  branchPrices?: BranchPriceItem[];
+  priceHistory?: ServicePriceHistoryItem[];
   branchServices?: BranchServiceRule[];
   assignedEmployees?: AssignedSpecialist[];
   effectivePrice?: number;
@@ -97,8 +135,9 @@ export interface BranchGovernanceData {
 }
 
 export interface CreateServicePayload {
-  code: string;
+  code?: string;
   name: string;
+  nameAm?: string;
   amharicName?: string;
   category: string;
   subCategory?: string;
@@ -106,6 +145,9 @@ export interface CreateServicePayload {
   imageUrl?: string;
   basePrice: number;
   durationMinutes: number;
+  depositType?: 'NONE' | 'FIXED' | 'PERCENTAGE';
+  depositValue?: number;
+  isActive?: boolean;
   preSetupBuffer?: number;
   turnaroundBuffer?: number;
   workstationType?: string;
@@ -638,6 +680,105 @@ export const serviceApi = {
     if (!res.ok) {
       const errJson = await res.json().catch(() => ({}));
       throw new Error(errJson.message || `Governance update failed (${res.status})`);
+    }
+    const json = await res.json();
+    return json.data || json;
+  },
+
+  /**
+   * Set branch-specific price, custom duration, and deposit overrides
+   */
+  async setBranchPrice(
+    serviceId: string,
+    payload: {
+      branchId: string;
+      customPrice: number;
+      customDurationMinutes?: number | null;
+      isActive?: boolean;
+      depositType?: 'NONE' | 'FIXED' | 'PERCENTAGE' | null;
+      depositValue?: number | null;
+      reason?: string;
+    }
+  ) {
+    const res = await fetch(`${API_BASE}/services/${serviceId}/branch-price`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Failed to update branch price (${res.status})`);
+    }
+    const json = await res.json();
+    return json.data || json;
+  },
+
+  /**
+   * Retrieve immutable historical audit trail of price changes
+   */
+  async getPriceHistory(serviceId: string, branchId?: string): Promise<ServicePriceHistoryItem[]> {
+    const url = branchId && branchId !== 'all'
+      ? `${API_BASE}/services/${serviceId}/price-history?branchId=${branchId}`
+      : `${API_BASE}/services/${serviceId}/price-history`;
+    const res = await fetch(url, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Failed to fetch price history (${res.status})`);
+    }
+    const json = await res.json();
+    return json.data || json;
+  },
+
+  /**
+   * Set default deposit rule for a branch
+   */
+  async setBranchDepositRule(
+    branchId: string,
+    payload: {
+      defaultDepositType: 'NONE' | 'FIXED' | 'PERCENTAGE';
+      defaultDepositValue: number;
+    }
+  ) {
+    const res = await fetch(`${API_BASE}/branches/${branchId}/deposit-rule`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Failed to update deposit rule (${res.status})`);
+    }
+    const json = await res.json();
+    return json.data || json;
+  },
+
+  /**
+   * Upload service image to Cloudinary (or local storage fallback)
+   */
+  async uploadImage(file: File): Promise<{ url: string; publicId?: string }> {
+    const formData = new FormData();
+    formData.append('image', file);
+
+    const token =
+      localStorage.getItem('token') ||
+      localStorage.getItem('accessToken') ||
+      localStorage.getItem('eyob_auth_token');
+
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`${API_BASE}/services/upload-image`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Failed to upload image (${res.status})`);
     }
     const json = await res.json();
     return json.data || json;

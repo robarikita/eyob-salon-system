@@ -106,8 +106,10 @@ export const BookingReviewPage: React.FC = () => {
     }
   };
 
-  const totalTariff = service.effectivePrice || service.basePrice || 1200;
-  const depositRequired = service.depositAmount || service.effectiveDeposit || 300;
+  const totalTariff = service.effectivePrice || service.basePrice || 0;
+  const depositRequired = service.effectiveDeposit !== undefined && service.effectiveDeposit !== null
+    ? service.effectiveDeposit
+    : (service.depositAmount ?? 0);
   const balanceDue = Math.max(0, totalTariff - depositRequired);
 
   const customerDisplayName = user?.firstName

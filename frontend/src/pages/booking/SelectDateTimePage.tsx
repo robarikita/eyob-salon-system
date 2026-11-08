@@ -374,15 +374,18 @@ export const SelectDateTimePage: React.FC = () => {
               <div className="flex items-center justify-between text-stone-400">
                 <span>{t('book.deposit')}</span>
                 <span className="text-[#D4AF37] font-bold">
-                  {Number(service.depositAmount || service.effectiveDeposit || 300).toLocaleString()} ETB
+                  {Number(service.effectiveDeposit ?? service.depositAmount ?? 0).toLocaleString()} ETB
                 </span>
               </div>
               <div className="flex items-center justify-between text-stone-400">
                 <span>{t('book.balanceDue')}</span>
                 <span>
                   {Number(
-                    (service.effectivePrice || service.basePrice || 0) -
-                      (service.depositAmount || service.effectiveDeposit || 0)
+                    Math.max(
+                      0,
+                      (service.effectivePrice || service.basePrice || 0) -
+                        (service.effectiveDeposit ?? service.depositAmount ?? 0)
+                    )
                   ).toLocaleString()} ETB
                 </span>
               </div>

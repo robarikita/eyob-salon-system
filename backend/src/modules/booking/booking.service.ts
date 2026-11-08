@@ -268,7 +268,10 @@ export class BookingService {
     const price = service.effectivePrice;
     const duration = service.effectiveDuration || 60;
     const turnaround = service.effectiveTurnaround || 15;
-    const depositRequired = service.depositAmount || 0;
+
+    // Dynamically resolve deposit via 3-tier priority hierarchy
+    const depositCalc = await ServiceRitualService.getDepositCalculation(serviceId, branchId, price);
+    const depositRequired = depositCalc.depositAmount;
     const totalAmount = price;
     const depositPaid = depositRequired;
     const balanceDue = Math.max(0, totalAmount - depositPaid);
@@ -342,6 +345,10 @@ export class BookingService {
               priceSnapshot: price,
               durationSnapshot: duration,
               depositSnapshot: depositRequired,
+              snapshotServiceName: service.name,
+              snapshotPrice: price,
+              snapshotDurationMinutes: duration,
+              snapshotDepositAmount: depositRequired,
               startTime,
               endTime,
               employeeId,

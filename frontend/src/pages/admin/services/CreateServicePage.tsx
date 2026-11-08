@@ -73,7 +73,7 @@ export const CreateServicePage: React.FC = () => {
   };
 
   const handleSubmit = async (publish: boolean) => {
-    if (!formData.name.trim() || !formData.code.trim()) {
+    if (!formData.name.trim() || !(formData.code || '').trim()) {
       alert('Please enter service name and ritual registry code.');
       return;
     }

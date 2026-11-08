@@ -560,7 +560,9 @@ export const BookAppointmentPage: React.FC = () => {
               <div className="flex items-center justify-between text-stone-400">
                 <span>{t('book.deposit')}</span>
                 <span className="text-[#D4AF37] font-medium">
-                  {Number(selectedService?.effectiveDeposit || 300).toLocaleString()} ETB
+                  {selectedService?.effectiveDeposit !== undefined && selectedService?.effectiveDeposit !== null
+                    ? `${Number(selectedService.effectiveDeposit).toLocaleString()} ETB`
+                    : `${Number(selectedService?.depositAmount || 0).toLocaleString()} ETB`}
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm font-bold text-[#FAF7F2] pt-2 border-t border-[#2C2724]">

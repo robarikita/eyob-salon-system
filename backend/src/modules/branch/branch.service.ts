@@ -429,6 +429,12 @@ export class BranchService {
       }
 
       // 3. Delete branch-specific services and branchService joins
+      await tx.branchServicePrice.deleteMany({
+        where: { branchId: id },
+      });
+      await tx.servicePriceHistory.deleteMany({
+        where: { branchId: id },
+      });
       await tx.branchService.deleteMany({
         where: { branchId: id },
       });

@@ -3,21 +3,28 @@ import { ServiceRitualService } from "./service.service";
 import {
   createServiceSchema,
   updateServiceSchema,
+  branchPriceOverrideSchema,
+  depositRuleSchema,
   updateBranchServiceRuleSchema,
 } from "./service.schema";
 import { UnauthorizedError } from "../../errors/AppError";
+import { uploadImage } from "../../utils/cloudinary";
 
 export class ServiceController {
   static async listServices(req: Request, res: Response, next: NextFunction) {
     try {
-      const { search, category, branchId, status } = req.query;
+      const { search, category, branchId, status, isActive } = req.query;
+      let effectiveStatus = status as string | undefined;
+      if (!effectiveStatus && isActive !== undefined) {
+        effectiveStatus = String(isActive) === "true" ? "active" : "inactive";
+      }
 
       const services = await ServiceRitualService.listServices(
         {
           search: search as string | undefined,
           category: category as string | undefined,
           branchId: branchId as string | undefined,
-          status: status as string | undefined,
+          status: effectiveStatus,
         },
         req.user
       );
@@ -84,6 +91,54 @@ export class ServiceController {
     }
   }
 
+  static async setBranchPrice(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) throw new UnauthorizedError();
+      const serviceId = req.params.id as string;
+      const data = branchPriceOverrideSchema.parse(req.body);
+      const result = await ServiceRitualService.setBranchPrice(serviceId, data, req.user);
+
+      res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getPriceHistory(req: Request, res: Response, next: NextFunction) {
+    try {
+      const serviceId = req.params.id as string;
+      const branchId = req.query.branchId as string | undefined;
+      const history = await ServiceRitualService.getPriceHistory(serviceId, branchId);
+
+      res.status(200).json({
+        success: true,
+        count: history.length,
+        data: history,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async setBranchDepositRule(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) throw new UnauthorizedError();
+      const branchId = req.params.id as string;
+      const data = depositRuleSchema.parse(req.body);
+      const result = await ServiceRitualService.setBranchDepositRule(branchId, data, req.user);
+
+      res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async updateBranchRules(req: Request, res: Response, next: NextFunction) {
     try {
       if (!req.user) throw new UnauthorizedError();
@@ -118,6 +173,30 @@ export class ServiceController {
         success: true,
         data: result.service,
         warning: result.warning,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async uploadServiceImage(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) throw new UnauthorizedError();
+      let input: string | Buffer;
+
+      if ((req as any).file) {
+        input = (req as any).file.buffer;
+      } else if (req.body?.image) {
+        input = req.body.image;
+      } else {
+        res.status(400).json({ success: false, message: "No image file or base64 image provided." });
+        return;
+      }
+
+      const result = await uploadImage(input);
+      res.status(200).json({
+        success: true,
+        data: result,
       });
     } catch (error) {
       next(error);

@@ -1,8 +1,10 @@
 import prisma from "../../utils/prisma";
-import { UserRole } from "@prisma/client";
+import { UserRole, DepositType } from "@prisma/client";
 import {
   CreateServiceInput,
   UpdateServiceInput,
+  BranchPriceOverrideInput,
+  DepositRuleInput,
   UpdateBranchServiceRuleInput,
 } from "./service.schema";
 import {
@@ -10,6 +12,7 @@ import {
   ForbiddenError,
   ConflictError,
 } from "../../errors/AppError";
+import { uploadImage } from "../../utils/cloudinary";
 
 interface CurrentUser {
   id: string;
@@ -19,6 +22,98 @@ interface CurrentUser {
 }
 
 export class ServiceRitualService {
+  /**
+   * Calculate required deposit for a service at a specific branch using the 3-tier hierarchy:
+   * Priority 1: Service branch override (BranchServicePrice.depositType & depositValue)
+   * Priority 2: Service global rule (Service.depositType & depositValue)
+   * Priority 3: Branch default rule (Branch.defaultDepositType & defaultDepositValue)
+   */
+  static async getDepositCalculation(
+    serviceId: string,
+    branchId: string,
+    effectivePrice?: number
+  ): Promise<{
+    depositAmount: number;
+    appliedRule: "BRANCH_OVERRIDE" | "SERVICE_GLOBAL" | "BRANCH_DEFAULT";
+    depositType: DepositType;
+    depositValue: number;
+  }> {
+    const service = await prisma.service.findUnique({
+      where: { id: serviceId },
+      include: {
+        branchPrices: { where: { branchId } },
+      },
+    });
+
+    if (!service) {
+      throw new NotFoundError("Service ritual not found.");
+    }
+
+    const branch = await prisma.branch.findUnique({
+      where: { id: branchId },
+    });
+
+    if (!branch) {
+      throw new NotFoundError("Branch not found.");
+    }
+
+    const branchOverride = service.branchPrices[0];
+    const price =
+      effectivePrice !== undefined
+        ? effectivePrice
+        : branchOverride && branchOverride.customPrice !== null
+        ? Number(branchOverride.customPrice)
+        : Number(service.basePrice);
+
+    // Priority 1: Service branch override
+    if (branchOverride && branchOverride.depositType) {
+      const dType = branchOverride.depositType;
+      const dVal = Number(branchOverride.depositValue ?? 0);
+      let calculated = 0;
+      if (dType === "NONE") calculated = 0;
+      else if (dType === "FIXED") calculated = dVal;
+      else if (dType === "PERCENTAGE") calculated = (price * dVal) / 100;
+
+      return {
+        depositAmount: Math.round(calculated * 100) / 100,
+        appliedRule: "BRANCH_OVERRIDE",
+        depositType: dType,
+        depositValue: dVal,
+      };
+    }
+
+    // Priority 2: Service global rule (if not default NONE)
+    if (service.depositType && service.depositType !== "NONE") {
+      const dType = service.depositType;
+      const dVal = Number(service.depositValue ?? service.depositAmount ?? 0);
+      let calculated = 0;
+      if (dType === "FIXED") calculated = dVal;
+      else if (dType === "PERCENTAGE") calculated = (price * dVal) / 100;
+
+      return {
+        depositAmount: Math.round(calculated * 100) / 100,
+        appliedRule: "SERVICE_GLOBAL",
+        depositType: dType,
+        depositValue: dVal,
+      };
+    }
+
+    // Priority 3: Branch default rule
+    const bType = branch.defaultDepositType || "PERCENTAGE";
+    const bVal = Number(branch.defaultDepositValue ?? 20);
+    let calculated = 0;
+    if (bType === "NONE") calculated = 0;
+    else if (bType === "FIXED") calculated = bVal;
+    else if (bType === "PERCENTAGE") calculated = (price * bVal) / 100;
+
+    return {
+      depositAmount: Math.round(calculated * 100) / 100,
+      appliedRule: "BRANCH_DEFAULT",
+      depositType: bType,
+      depositValue: bVal,
+    };
+  }
+
   /**
    * List all service rituals with filtering & effective branch pricing resolution
    */
@@ -52,6 +147,7 @@ export class ServiceRitualService {
         { code: { contains: q, mode: "insensitive" } },
         { name: { contains: q, mode: "insensitive" } },
         { amharicName: { contains: q, mode: "insensitive" } },
+        { nameAm: { contains: q, mode: "insensitive" } },
         { category: { contains: q, mode: "insensitive" } },
         { subCategory: { contains: q, mode: "insensitive" } },
         { description: { contains: q, mode: "insensitive" } },
@@ -61,6 +157,11 @@ export class ServiceRitualService {
     const services = await prisma.service.findMany({
       where,
       include: {
+        branchPrices: {
+          include: {
+            branch: { select: { id: true, name: true, slug: true } },
+          },
+        },
         branchServices: {
           include: {
             branch: {
@@ -94,21 +195,36 @@ export class ServiceRitualService {
       targetBranchId = undefined;
     }
 
+    // Fetch branch defaults if branch context is present
+    let targetBranch: { defaultDepositType: DepositType; defaultDepositValue: any } | null = null;
+    if (targetBranchId) {
+      targetBranch = await prisma.branch.findFirst({
+        where: { OR: [{ id: targetBranchId }, { slug: targetBranchId }] },
+        select: { defaultDepositType: true, defaultDepositValue: true },
+      });
+    }
+
     return services.map((s) => {
-      // Find matching branch rule if branch context exists
+      // Find matching branch override
+      const branchPrice = targetBranchId
+        ? s.branchPrices.find((bp) => bp.branchId === targetBranchId || bp.branch?.slug === targetBranchId)
+        : null;
+
       const branchRule = targetBranchId
-        ? s.branchServices.find(
-            (bs) => bs.branchId === targetBranchId || bs.branch?.slug === targetBranchId
-          )
+        ? s.branchServices.find((bs) => bs.branchId === targetBranchId || bs.branch?.slug === targetBranchId)
         : null;
 
       const effectivePrice =
-        branchRule && branchRule.customPrice !== null
+        branchPrice && branchPrice.customPrice !== null
+          ? Number(branchPrice.customPrice)
+          : branchRule && branchRule.customPrice !== null
           ? Number(branchRule.customPrice)
           : Number(s.basePrice);
 
       const effectiveDuration =
-        branchRule && branchRule.customDurationMinutes !== null
+        branchPrice && branchPrice.customDurationMinutes !== null
+          ? branchPrice.customDurationMinutes
+          : branchRule && branchRule.customDurationMinutes !== null
           ? branchRule.customDurationMinutes
           : s.durationMinutes;
 
@@ -117,12 +233,35 @@ export class ServiceRitualService {
           ? branchRule.customTurnaround
           : s.turnaroundBuffer;
 
-      const effectiveDeposit =
-        branchRule && branchRule.requiredDeposit !== null
-          ? Number(branchRule.requiredDeposit)
-          : Number(s.depositAmount);
+      // Calculate effective deposit
+      let effectiveDeposit = Number(s.depositAmount || 0);
+      let effectiveDepositType: DepositType = s.depositType;
+      let effectiveDepositValue = Number(s.depositValue || 0);
 
-      const effectiveActive = branchRule
+      if (branchPrice && branchPrice.depositType) {
+        effectiveDepositType = branchPrice.depositType;
+        effectiveDepositValue = Number(branchPrice.depositValue ?? 0);
+        if (effectiveDepositType === "NONE") effectiveDeposit = 0;
+        else if (effectiveDepositType === "FIXED") effectiveDeposit = effectiveDepositValue;
+        else if (effectiveDepositType === "PERCENTAGE") effectiveDeposit = (effectivePrice * effectiveDepositValue) / 100;
+      } else if (s.depositType && s.depositType !== "NONE") {
+        effectiveDepositType = s.depositType;
+        effectiveDepositValue = Number(s.depositValue || 0);
+        if (effectiveDepositType === "FIXED") effectiveDeposit = effectiveDepositValue;
+        else if (effectiveDepositType === "PERCENTAGE") effectiveDeposit = (effectivePrice * effectiveDepositValue) / 100;
+      } else if (targetBranch) {
+        effectiveDepositType = targetBranch.defaultDepositType;
+        effectiveDepositValue = Number(targetBranch.defaultDepositValue);
+        if (effectiveDepositType === "NONE") effectiveDeposit = 0;
+        else if (effectiveDepositType === "FIXED") effectiveDeposit = effectiveDepositValue;
+        else if (effectiveDepositType === "PERCENTAGE") effectiveDeposit = (effectivePrice * effectiveDepositValue) / 100;
+      }
+
+      effectiveDeposit = Math.round(effectiveDeposit * 100) / 100;
+
+      const effectiveActive = branchPrice
+        ? s.isActive && branchPrice.isActive
+        : branchRule
         ? s.isActive && branchRule.isActive
         : s.isActive;
 
@@ -140,11 +279,15 @@ export class ServiceRitualService {
         code: s.code,
         name: s.name,
         title: s.name,
-        amharicName: s.amharicName,
+        nameAm: s.nameAm || s.amharicName,
+        amharicName: s.nameAm || s.amharicName,
+        slug: s.slug,
         category: s.category,
         subCategory: s.subCategory,
         description: s.description,
+        descriptionAm: s.descriptionAm,
         imageUrl: s.imageUrl,
+        cloudinaryPublicId: s.cloudinaryPublicId,
         basePrice: Number(s.basePrice),
         price: effectivePrice,
         effectivePrice,
@@ -160,10 +303,23 @@ export class ServiceRitualService {
         requiresApprentice: s.requiresApprentice,
         requiredProtocols: s.requiredProtocols,
         standardCommission: s.standardCommission ? Number(s.standardCommission) : null,
+        depositType: s.depositType,
+        depositValue: Number(s.depositValue),
         depositAmount: effectiveDeposit,
         effectiveDeposit,
         isActive: s.isActive,
         effectiveActive,
+        branchPrices: s.branchPrices.map((bp) => ({
+          id: bp.id,
+          branchId: bp.branchId,
+          branchName: bp.branch?.name,
+          branchSlug: bp.branch?.slug,
+          customPrice: Number(bp.customPrice),
+          customDurationMinutes: bp.customDurationMinutes,
+          depositType: bp.depositType,
+          depositValue: bp.depositValue !== null ? Number(bp.depositValue) : null,
+          isActive: bp.isActive,
+        })),
         branchServices: s.branchServices.map((bs) => ({
           id: bs.id,
           branchId: bs.branchId,
@@ -186,14 +342,19 @@ export class ServiceRitualService {
   }
 
   /**
-   * Get ritual specification dossier by ID or Code
+   * Get ritual specification dossier by ID, Slug, or Code
    */
   static async getServiceById(idOrCode: string, currentUser?: CurrentUser, branchContextId?: string) {
     const service = await prisma.service.findFirst({
       where: {
-        OR: [{ id: idOrCode }, { code: idOrCode }],
+        OR: [{ id: idOrCode }, { code: idOrCode }, { slug: idOrCode }],
       },
       include: {
+        branchPrices: {
+          include: {
+            branch: { select: { id: true, name: true, slug: true, city: true } },
+          },
+        },
         branchServices: {
           include: {
             branch: {
@@ -205,7 +366,9 @@ export class ServiceRitualService {
           include: {
             employee: {
               include: {
-                branch: { select: { id: true, name: true, slug: true } },
+                branch: {
+                  select: { id: true, name: true, slug: true },
+                },
               },
             },
           },
@@ -217,54 +380,114 @@ export class ServiceRitualService {
       throw new NotFoundError("Service ritual not found.");
     }
 
-    // Determine target branch context
     let targetBranchId = branchContextId;
     if (currentUser?.role === "BRANCH_ADMIN") {
       targetBranchId = currentUser.branchId || undefined;
     }
 
+    const branchPrice = targetBranchId
+      ? service.branchPrices.find((bp) => bp.branchId === targetBranchId || bp.branch?.slug === targetBranchId)
+      : null;
+
     const branchRule = targetBranchId
-      ? service.branchServices.find(
-          (bs) => bs.branchId === targetBranchId || bs.branch?.slug === targetBranchId
-        )
+      ? service.branchServices.find((bs) => bs.branchId === targetBranchId || bs.branch?.slug === targetBranchId)
       : null;
 
     const effectivePrice =
-      branchRule && branchRule.customPrice !== null
+      branchPrice && branchPrice.customPrice !== null
+        ? Number(branchPrice.customPrice)
+        : branchRule && branchRule.customPrice !== null
         ? Number(branchRule.customPrice)
         : Number(service.basePrice);
+
+    const effectiveDuration =
+      branchPrice && branchPrice.customDurationMinutes !== null
+        ? branchPrice.customDurationMinutes
+        : branchRule && branchRule.customDurationMinutes !== null
+        ? branchRule.customDurationMinutes
+        : service.durationMinutes;
+
+    let targetBranch: { defaultDepositType: DepositType; defaultDepositValue: any } | null = null;
+    if (targetBranchId) {
+      targetBranch = await prisma.branch.findFirst({
+        where: { OR: [{ id: targetBranchId }, { slug: targetBranchId }] },
+        select: { defaultDepositType: true, defaultDepositValue: true },
+      });
+    }
+
+    let effectiveDeposit = Number(service.depositAmount || 0);
+    if (branchPrice && branchPrice.depositType) {
+      const dType = branchPrice.depositType;
+      const dVal = Number(branchPrice.depositValue ?? 0);
+      if (dType === "NONE") effectiveDeposit = 0;
+      else if (dType === "FIXED") effectiveDeposit = dVal;
+      else if (dType === "PERCENTAGE") effectiveDeposit = (effectivePrice * dVal) / 100;
+    } else if (service.depositType && service.depositType !== "NONE") {
+      const dType = service.depositType;
+      const dVal = Number(service.depositValue || 0);
+      if (dType === "FIXED") effectiveDeposit = dVal;
+      else if (dType === "PERCENTAGE") effectiveDeposit = (effectivePrice * dVal) / 100;
+    } else if (targetBranch) {
+      const dType = targetBranch.defaultDepositType;
+      const dVal = Number(targetBranch.defaultDepositValue);
+      if (dType === "NONE") effectiveDeposit = 0;
+      else if (dType === "FIXED") effectiveDeposit = dVal;
+      else if (dType === "PERCENTAGE") effectiveDeposit = (effectivePrice * dVal) / 100;
+    }
+
+    effectiveDeposit = Math.round(effectiveDeposit * 100) / 100;
 
     return {
       id: service.id,
       code: service.code,
       name: service.name,
       title: service.name,
-      amharicName: service.amharicName,
+      nameAm: service.nameAm || service.amharicName,
+      amharicName: service.nameAm || service.amharicName,
+      slug: service.slug,
       category: service.category,
       subCategory: service.subCategory,
       description: service.description,
+      descriptionAm: service.descriptionAm,
       imageUrl: service.imageUrl,
+      cloudinaryPublicId: service.cloudinaryPublicId,
       basePrice: Number(service.basePrice),
+      price: effectivePrice,
       effectivePrice,
       durationMinutes: service.durationMinutes,
-      effectiveDuration: branchRule?.customDurationMinutes || service.durationMinutes,
+      duration: effectiveDuration,
+      effectiveDuration,
       preSetupBuffer: service.preSetupBuffer,
       turnaroundBuffer: service.turnaroundBuffer,
-      effectiveTurnaround: branchRule?.customTurnaround || service.turnaroundBuffer,
+      effectiveTurnaround: branchRule?.customTurnaround !== null ? branchRule?.customTurnaround : service.turnaroundBuffer,
       workstationType: service.workstationType,
       workstationLock: branchRule?.workstationLock || null,
       minGuildRank: service.minGuildRank,
       requiresApprentice: service.requiresApprentice,
       requiredProtocols: service.requiredProtocols,
       standardCommission: service.standardCommission ? Number(service.standardCommission) : null,
-      depositAmount: branchRule?.requiredDeposit ? Number(branchRule.requiredDeposit) : Number(service.depositAmount),
+      depositType: service.depositType,
+      depositValue: Number(service.depositValue),
+      depositAmount: effectiveDeposit,
+      effectiveDeposit,
       isActive: service.isActive,
+      effectiveActive: branchPrice ? service.isActive && branchPrice.isActive : branchRule ? service.isActive && branchRule.isActive : service.isActive,
+      branchPrices: service.branchPrices.map((bp) => ({
+        id: bp.id,
+        branchId: bp.branchId,
+        branchName: bp.branch?.name,
+        branchSlug: bp.branch?.slug,
+        customPrice: Number(bp.customPrice),
+        customDurationMinutes: bp.customDurationMinutes,
+        depositType: bp.depositType,
+        depositValue: bp.depositValue !== null ? Number(bp.depositValue) : null,
+        isActive: bp.isActive,
+      })),
       branchServices: service.branchServices.map((bs) => ({
         id: bs.id,
         branchId: bs.branchId,
         branchName: bs.branch.name,
         branchSlug: bs.branch.slug,
-        city: bs.branch.city,
         customPrice: bs.customPrice !== null ? Number(bs.customPrice) : null,
         effectivePrice: bs.customPrice !== null ? Number(bs.customPrice) : Number(service.basePrice),
         customDurationMinutes: bs.customDurationMinutes,
@@ -292,48 +515,79 @@ export class ServiceRitualService {
   }
 
   /**
-   * Curate new service ritual (OWNER Only)
+   * Curate new service ritual and record initial price history
    */
   static async createService(data: CreateServiceInput, currentUser: CurrentUser) {
-    if (currentUser.role !== "OWNER") {
-      throw new ForbiddenError("Forbidden: Only the salon OWNER can curate new service rituals.");
-    }
+    const code =
+      data.code ||
+      `SR-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
     const existing = await prisma.service.findUnique({
-      where: { code: data.code },
+      where: { code },
     });
     if (existing) {
-      throw new ConflictError(`A service ritual with code '${data.code}' already exists.`);
+      throw new ConflictError(`A service ritual with code '${code}' already exists.`);
     }
+
+    const slug =
+      data.slug ||
+      `${data.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}-${Date.now().toString(36)}`;
+
+    let finalImageUrl = data.imageUrl || null;
+    let finalCloudinaryId = data.cloudinaryPublicId || null;
+
+    if (finalImageUrl && finalImageUrl.startsWith("data:image")) {
+      const uploadRes = await uploadImage(finalImageUrl);
+      finalImageUrl = uploadRes.url;
+      finalCloudinaryId = uploadRes.publicId || null;
+    }
+
+    const depositVal = data.depositValue !== undefined ? data.depositValue : data.depositAmount || 0;
 
     return prisma.$transaction(async (tx) => {
       const service = await tx.service.create({
         data: {
-          code: data.code,
+          code,
           name: data.name,
-          amharicName: data.amharicName || null,
+          nameAm: data.nameAm || data.amharicName || null,
+          amharicName: data.nameAm || data.amharicName || null,
+          slug,
           category: data.category,
           subCategory: data.subCategory || null,
           description: data.description || null,
-          imageUrl: data.imageUrl || null,
+          descriptionAm: data.descriptionAm || null,
+          imageUrl: finalImageUrl,
+          cloudinaryPublicId: finalCloudinaryId,
           basePrice: data.basePrice,
           durationMinutes: data.durationMinutes,
-          preSetupBuffer: data.preSetupBuffer,
-          turnaroundBuffer: data.turnaroundBuffer,
+          depositType: (data.depositType as DepositType) || "NONE",
+          depositValue: depositVal,
+          depositAmount: depositVal,
+          preSetupBuffer: data.preSetupBuffer || 0,
+          turnaroundBuffer: data.turnaroundBuffer || 15,
           workstationType: data.workstationType || null,
           minGuildRank: data.minGuildRank || null,
-          requiresApprentice: data.requiresApprentice,
-          requiredProtocols: data.requiredProtocols,
-          standardCommission: data.standardCommission !== undefined && data.standardCommission !== null ? data.standardCommission : null,
-          depositAmount: data.depositAmount || 100,
+          requiresApprentice: data.requiresApprentice || false,
+          requiredProtocols: data.requiredProtocols || [],
+          standardCommission: data.standardCommission !== undefined ? data.standardCommission : null,
           isActive: true,
+        },
+      });
+
+      // Insert initial ServicePriceHistory audit record
+      await tx.servicePriceHistory.create({
+        data: {
+          serviceId: service.id,
+          branchId: null,
+          price: data.basePrice,
+          changedBy: currentUser.id,
+          reason: "Initial master service creation baseline",
         },
       });
 
       // Target branches deployment
       let targetBranches = data.branchIds;
       if (!targetBranches || targetBranches.length === 0) {
-        // Auto-provision for all active branches
         const allBranches = await tx.branch.findMany({ where: { isActive: true } });
         targetBranches = allBranches.map((b) => b.id);
       }
@@ -346,8 +600,20 @@ export class ServiceRitualService {
             customPrice: null,
             customDurationMinutes: null,
             customTurnaround: null,
-            requiredDeposit: data.depositAmount || 100,
+            requiredDeposit: depositVal,
             workstationLock: null,
+            isActive: true,
+          },
+        });
+
+        await tx.branchServicePrice.create({
+          data: {
+            branchId,
+            serviceId: service.id,
+            customPrice: data.basePrice,
+            customDurationMinutes: data.durationMinutes,
+            depositType: null,
+            depositValue: null,
             isActive: true,
           },
         });
@@ -356,22 +622,18 @@ export class ServiceRitualService {
       return tx.service.findUnique({
         where: { id: service.id },
         include: {
-          branchServices: {
-            include: { branch: true },
-          },
+          branchPrices: { include: { branch: true } },
+          branchServices: { include: { branch: true } },
+          priceHistory: true,
         },
       });
     });
   }
 
   /**
-   * Update service ritual parameters (OWNER Only)
+   * Update service ritual parameters and record ServicePriceHistory on basePrice mutation
    */
   static async updateService(id: string, data: UpdateServiceInput, currentUser: CurrentUser) {
-    if (currentUser.role !== "OWNER") {
-      throw new ForbiddenError("Forbidden: Only the salon OWNER can modify master ritual parameters.");
-    }
-
     const existing = await prisma.service.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundError("Service ritual not found.");
@@ -384,16 +646,39 @@ export class ServiceRitualService {
       }
     }
 
+    let finalImageUrl = data.imageUrl !== undefined ? data.imageUrl : existing.imageUrl;
+    let finalCloudinaryId = data.cloudinaryPublicId !== undefined ? data.cloudinaryPublicId : existing.cloudinaryPublicId;
+
+    if (finalImageUrl && finalImageUrl.startsWith("data:image")) {
+      const uploadRes = await uploadImage(finalImageUrl);
+      finalImageUrl = uploadRes.url;
+      finalCloudinaryId = uploadRes.publicId || null;
+    }
+
     const updateData: any = {};
     if (data.code) updateData.code = data.code;
     if (data.name) updateData.name = data.name;
-    if (data.amharicName !== undefined) updateData.amharicName = data.amharicName;
+    if (data.nameAm !== undefined || data.amharicName !== undefined) {
+      updateData.nameAm = data.nameAm || data.amharicName;
+      updateData.amharicName = data.nameAm || data.amharicName;
+    }
+    if (data.slug) updateData.slug = data.slug;
     if (data.category) updateData.category = data.category;
     if (data.subCategory !== undefined) updateData.subCategory = data.subCategory;
     if (data.description !== undefined) updateData.description = data.description;
-    if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl;
+    if (data.descriptionAm !== undefined) updateData.descriptionAm = data.descriptionAm;
+    if (finalImageUrl !== undefined) updateData.imageUrl = finalImageUrl;
+    if (finalCloudinaryId !== undefined) updateData.cloudinaryPublicId = finalCloudinaryId;
     if (data.basePrice !== undefined) updateData.basePrice = data.basePrice;
     if (data.durationMinutes !== undefined) updateData.durationMinutes = data.durationMinutes;
+    if (data.depositType !== undefined) updateData.depositType = data.depositType;
+    if (data.depositValue !== undefined) {
+      updateData.depositValue = data.depositValue;
+      updateData.depositAmount = data.depositValue;
+    } else if (data.depositAmount !== undefined) {
+      updateData.depositValue = data.depositAmount;
+      updateData.depositAmount = data.depositAmount;
+    }
     if (data.preSetupBuffer !== undefined) updateData.preSetupBuffer = data.preSetupBuffer;
     if (data.turnaroundBuffer !== undefined) updateData.turnaroundBuffer = data.turnaroundBuffer;
     if (data.workstationType !== undefined) updateData.workstationType = data.workstationType;
@@ -401,21 +686,230 @@ export class ServiceRitualService {
     if (data.requiresApprentice !== undefined) updateData.requiresApprentice = data.requiresApprentice;
     if (data.requiredProtocols !== undefined) updateData.requiredProtocols = data.requiredProtocols;
     if (data.standardCommission !== undefined) updateData.standardCommission = data.standardCommission;
-    if (data.depositAmount !== undefined) updateData.depositAmount = data.depositAmount;
     if (data.isActive !== undefined) updateData.isActive = data.isActive;
 
-    return prisma.service.update({
-      where: { id },
-      data: updateData,
+    return prisma.$transaction(async (tx) => {
+      // Record historical price audit if basePrice changed
+      if (data.basePrice !== undefined && Number(data.basePrice) !== Number(existing.basePrice)) {
+        await tx.servicePriceHistory.create({
+          data: {
+            serviceId: id,
+            branchId: null,
+            price: data.basePrice,
+            changedBy: currentUser.id,
+            reason: data.priceChangeReason || "Master service price mutation",
+          },
+        });
+      }
+
+      return tx.service.update({
+        where: { id },
+        data: updateData,
+        include: {
+          branchPrices: { include: { branch: true } },
+          branchServices: { include: { branch: true } },
+          priceHistory: { orderBy: { effectiveFrom: "desc" } },
+        },
+      });
+    });
+  }
+
+  /**
+   * Set branch-specific price & duration override and insert into ServicePriceHistory
+   */
+  static async setBranchPrice(
+    serviceId: string,
+    data: BranchPriceOverrideInput,
+    currentUser: CurrentUser
+  ) {
+    if (currentUser.role === "BRANCH_ADMIN") {
+      if (currentUser.branchId !== data.branchId) {
+        throw new ForbiddenError("Forbidden: You do not have access to modify rules for this branch.");
+      }
+    } else if (currentUser.role !== "OWNER") {
+      throw new ForbiddenError("Forbidden: Insufficient privileges.");
+    }
+
+    const service = await prisma.service.findUnique({ where: { id: serviceId } });
+    if (!service) throw new NotFoundError("Service ritual not found.");
+
+    const branch = await prisma.branch.findUnique({ where: { id: data.branchId } });
+    if (!branch) throw new NotFoundError("Branch not found.");
+
+    return prisma.$transaction(async (tx) => {
+      // 1. Upsert BranchServicePrice
+      const branchPrice = await tx.branchServicePrice.upsert({
+        where: {
+          branchId_serviceId: {
+            branchId: data.branchId,
+            serviceId,
+          },
+        },
+        update: {
+          customPrice: data.customPrice,
+          customDurationMinutes: data.customDurationMinutes ?? undefined,
+          depositType: data.depositType !== undefined ? (data.depositType as DepositType) : undefined,
+          depositValue: data.depositValue !== undefined && data.depositValue !== null ? data.depositValue : undefined,
+          isActive: data.isActive !== undefined ? data.isActive : undefined,
+        },
+        create: {
+          branchId: data.branchId,
+          serviceId,
+          customPrice: data.customPrice,
+          customDurationMinutes: data.customDurationMinutes ?? null,
+          depositType: (data.depositType as DepositType) || null,
+          depositValue: data.depositValue !== undefined ? data.depositValue : null,
+          isActive: data.isActive !== undefined ? data.isActive : true,
+        },
+        include: {
+          branch: { select: { id: true, name: true, slug: true } },
+          service: true,
+        },
+      });
+
+      // 2. Also keep BranchService in sync
+      await tx.branchService.upsert({
+        where: {
+          branchId_serviceId: {
+            branchId: data.branchId,
+            serviceId,
+          },
+        },
+        update: {
+          customPrice: data.customPrice,
+          customDurationMinutes: data.customDurationMinutes ?? undefined,
+          isActive: data.isActive !== undefined ? data.isActive : undefined,
+        },
+        create: {
+          branchId: data.branchId,
+          serviceId,
+          customPrice: data.customPrice,
+          customDurationMinutes: data.customDurationMinutes ?? null,
+          requiredDeposit: 100,
+          isActive: data.isActive !== undefined ? data.isActive : true,
+        },
+      });
+
+      // 3. Log to ServicePriceHistory
+      await tx.servicePriceHistory.create({
+        data: {
+          serviceId,
+          branchId: data.branchId,
+          price: data.customPrice,
+          changedBy: currentUser.id,
+          reason: data.reason || `Branch price override for ${branch.name}`,
+        },
+      });
+
+      return branchPrice;
+    });
+  }
+
+  /**
+   * Retrieve immutable ServicePriceHistory audit records
+   */
+  static async getPriceHistory(serviceId: string, branchId?: string) {
+    const service = await prisma.service.findUnique({ where: { id: serviceId } });
+    if (!service) throw new NotFoundError("Service ritual not found.");
+
+    const where: any = { serviceId };
+    if (branchId) {
+      where.branchId = branchId;
+    }
+
+    return prisma.servicePriceHistory.findMany({
+      where,
       include: {
-        branchServices: { include: { branch: true } },
+        branch: { select: { id: true, name: true, slug: true } },
+      },
+      orderBy: { effectiveFrom: "desc" },
+    });
+  }
+
+  /**
+   * Set Branch Default Deposit Rule (Owner or Scoped Branch Admin)
+   */
+  static async setBranchDepositRule(
+    branchId: string,
+    data: DepositRuleInput,
+    currentUser: CurrentUser
+  ) {
+    if (currentUser.role === "BRANCH_ADMIN") {
+      if (currentUser.branchId !== branchId) {
+        throw new ForbiddenError("Forbidden: branch access denied");
+      }
+    } else if (currentUser.role !== "OWNER") {
+      throw new ForbiddenError("Forbidden: Insufficient privileges.");
+    }
+
+    const branch = await prisma.branch.findUnique({ where: { id: branchId } });
+    if (!branch) throw new NotFoundError("Branch not found.");
+
+    return prisma.branch.update({
+      where: { id: branchId },
+      data: {
+        defaultDepositType: data.depositType as DepositType,
+        defaultDepositValue: data.depositValue,
+      },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        defaultDepositType: true,
+        defaultDepositValue: true,
       },
     });
   }
 
   /**
-   * Update branch-specific ritual rules (Branch Admin or Owner)
-   * Enforces cross-branch security: Branch Admin cannot modify rules for another branch.
+   * Soft toggle ritual active status with upcoming booking safeguard
+   */
+  static async toggleServiceStatus(id: string, _currentUser?: CurrentUser) {
+    const service = await prisma.service.findUnique({ where: { id } });
+    if (!service) {
+      throw new NotFoundError("Service ritual not found.");
+    }
+
+    const newStatus = !service.isActive;
+    let warning: string | undefined;
+
+    if (!newStatus) {
+      const now = new Date();
+      const futureBookingsCount = await prisma.bookingItem.count({
+        where: {
+          serviceId: service.id,
+          startTime: { gte: now },
+          booking: {
+            status: { in: ["CONFIRMED", "PENDING_PAYMENT"] },
+          },
+        },
+      });
+
+      if (futureBookingsCount > 0) {
+        warning = `Service ritual has ${futureBookingsCount} future appointment(s) that remain locked and active in the schedule.`;
+      }
+    }
+
+    const updated = await prisma.service.update({
+      where: { id },
+      data: { isActive: newStatus },
+      include: {
+        branchPrices: { include: { branch: true } },
+        branchServices: { include: { branch: true } },
+      },
+    });
+
+    return {
+      service: {
+        ...updated,
+        status: updated.isActive,
+      },
+      warning,
+    };
+  }
+
+  /**
+   * Update branch-specific ritual rules (Legacy compatibility)
    */
   static async updateBranchRules(
     serviceId: string,
@@ -423,7 +917,6 @@ export class ServiceRitualService {
     data: UpdateBranchServiceRuleInput,
     currentUser: CurrentUser
   ) {
-    // Cross-Branch Security Check
     if (currentUser.role === "BRANCH_ADMIN") {
       if (currentUser.branchId !== branchId) {
         throw new ForbiddenError("Forbidden: You do not have access to modify rules for this branch.");
@@ -442,85 +935,72 @@ export class ServiceRitualService {
       throw new NotFoundError("Branch not found.");
     }
 
-    return prisma.branchService.upsert({
-      where: {
-        branchId_serviceId: {
+    return prisma.$transaction(async (tx) => {
+      const updated = await tx.branchService.upsert({
+        where: {
+          branchId_serviceId: {
+            branchId,
+            serviceId,
+          },
+        },
+        update: {
+          customPrice: data.customPrice !== undefined ? data.customPrice : undefined,
+          customDurationMinutes: data.customDurationMinutes !== undefined ? data.customDurationMinutes : undefined,
+          customTurnaround: data.customTurnaround !== undefined ? data.customTurnaround : undefined,
+          requiredDeposit: data.requiredDeposit !== undefined ? data.requiredDeposit : undefined,
+          workstationLock: data.workstationLock !== undefined ? data.workstationLock : undefined,
+          isActive: data.isActive !== undefined ? data.isActive : undefined,
+        },
+        create: {
           branchId,
           serviceId,
+          customPrice: data.customPrice !== undefined ? data.customPrice : null,
+          customDurationMinutes: data.customDurationMinutes !== undefined ? data.customDurationMinutes : null,
+          customTurnaround: data.customTurnaround !== undefined ? data.customTurnaround : null,
+          requiredDeposit: data.requiredDeposit !== undefined ? data.requiredDeposit : 100,
+          workstationLock: data.workstationLock !== undefined ? data.workstationLock : null,
+          isActive: data.isActive !== undefined ? data.isActive : true,
         },
-      },
-      update: {
-        customPrice: data.customPrice !== undefined ? data.customPrice : undefined,
-        customDurationMinutes: data.customDurationMinutes !== undefined ? data.customDurationMinutes : undefined,
-        customTurnaround: data.customTurnaround !== undefined ? data.customTurnaround : undefined,
-        requiredDeposit: data.requiredDeposit !== undefined ? data.requiredDeposit : undefined,
-        workstationLock: data.workstationLock !== undefined ? data.workstationLock : undefined,
-        isActive: data.isActive !== undefined ? data.isActive : undefined,
-      },
-      create: {
-        branchId,
-        serviceId,
-        customPrice: data.customPrice !== undefined ? data.customPrice : null,
-        customDurationMinutes: data.customDurationMinutes !== undefined ? data.customDurationMinutes : null,
-        customTurnaround: data.customTurnaround !== undefined ? data.customTurnaround : null,
-        requiredDeposit: data.requiredDeposit !== undefined ? data.requiredDeposit : 100,
-        workstationLock: data.workstationLock !== undefined ? data.workstationLock : null,
-        isActive: data.isActive !== undefined ? data.isActive : true,
-      },
-      include: {
-        branch: { select: { id: true, name: true, slug: true } },
-        service: true,
-      },
-    });
-  }
-
-  /**
-   * Soft toggle ritual active status with upcoming booking safeguard
-   */
-  static async toggleServiceStatus(id: string, currentUser: CurrentUser) {
-    if (currentUser.role !== "OWNER") {
-      throw new ForbiddenError("Forbidden: Only the salon OWNER can toggle master ritual status.");
-    }
-
-    const service = await prisma.service.findUnique({ where: { id } });
-    if (!service) {
-      throw new NotFoundError("Service ritual not found.");
-    }
-
-    const newStatus = !service.isActive;
-    let warning: string | undefined;
-
-    // If deactivating, check upcoming bookings
-    if (!newStatus) {
-      const now = new Date();
-      const futureBookingsCount = await prisma.bookingItem.count({
-        where: {
-          serviceTitleSnapshot: service.name,
-          startTime: { gte: now },
-          booking: {
-            status: { in: ["CONFIRMED", "PENDING_PAYMENT"] },
-          },
+        include: {
+          branch: { select: { id: true, name: true, slug: true } },
+          service: true,
         },
       });
 
-      if (futureBookingsCount > 0) {
-        warning = `Service ritual has ${futureBookingsCount} future appointment(s) that remain locked and active in the schedule.`;
+      if (data.customPrice !== undefined && data.customPrice !== null) {
+        await tx.branchServicePrice.upsert({
+          where: { branchId_serviceId: { branchId, serviceId } },
+          update: {
+            customPrice: data.customPrice,
+            customDurationMinutes: data.customDurationMinutes !== undefined ? data.customDurationMinutes : undefined,
+            isActive: data.isActive !== undefined ? data.isActive : undefined,
+          },
+          create: {
+            branchId,
+            serviceId,
+            customPrice: data.customPrice,
+            customDurationMinutes: data.customDurationMinutes !== undefined ? data.customDurationMinutes : null,
+            isActive: data.isActive !== undefined ? data.isActive : true,
+          },
+        });
+
+        await tx.servicePriceHistory.create({
+          data: {
+            serviceId,
+            branchId,
+            price: data.customPrice,
+            changedBy: currentUser.id,
+            reason: `Branch rule price override for ${branch.name}`,
+          },
+        });
       }
-    }
 
-    const updated = await prisma.service.update({
-      where: { id },
-      data: { isActive: newStatus },
-      include: {
-        branchServices: { include: { branch: true } },
-      },
+      return updated;
     });
-
-    return { service: updated, warning };
   }
 
   /**
-   * Get branch governance summary & metrics for Branch Governance Engine (Screen 4)
+   * Get branch governance summary & metrics for Branch Governance Engine
    */
   static async getBranchGovernance(branchIdOrSlug: string, currentUser: CurrentUser) {
     const branch = await prisma.branch.findFirst({
@@ -533,12 +1013,10 @@ export class ServiceRitualService {
       throw new NotFoundError("Branch not found.");
     }
 
-    // Branch Admin Scoping Check
     if (currentUser.role === "BRANCH_ADMIN" && currentUser.branchId !== branch.id) {
       throw new ForbiddenError("Forbidden: You do not have access to view governance for this branch.");
     }
 
-    // Fetch all active branch services
     const branchServices = await prisma.branchService.findMany({
       where: { branchId: branch.id },
       include: {
@@ -550,7 +1028,6 @@ export class ServiceRitualService {
     const totalRituals = branchServices.length;
     const activeRituals = branchServices.filter((bs) => bs.isActive && bs.service.isActive).length;
 
-    // Calculate average ticket price
     let totalPrice = 0;
     branchServices.forEach((bs) => {
       const price = bs.customPrice !== null ? Number(bs.customPrice) : Number(bs.service.basePrice);
@@ -558,7 +1035,6 @@ export class ServiceRitualService {
     });
     const avgTicketPrice = totalRituals > 0 ? Math.round(totalPrice / totalRituals) : 820;
 
-    // Count assigned specialists in this branch
     const branchSpecialistsCount = await prisma.employee.count({
       where: { branchId: branch.id, status: true },
     });
@@ -600,7 +1076,7 @@ export class ServiceRitualService {
   }
 
   /**
-   * Get dynamic distinct category aggregations with service counts (Area 5)
+   * Get dynamic distinct category aggregations with service counts
    */
   static async getCategories(branchIdOrSlug?: string) {
     const where: any = {};
@@ -626,4 +1102,3 @@ export class ServiceRitualService {
     }));
   }
 }
-

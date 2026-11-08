@@ -13,6 +13,8 @@ export interface BranchDTO {
   phone?: string;
   address?: string;
   subtitle?: string;
+  defaultDepositType?: 'NONE' | 'FIXED' | 'PERCENTAGE';
+  defaultDepositValue?: number;
 }
 
 export const branchApi = {
