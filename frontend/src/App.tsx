@@ -28,6 +28,7 @@ import ServiceCatalogPage from './pages/admin/services/ServiceCatalogPage';
 import CreateServicePage from './pages/admin/services/CreateServicePage';
 import ServiceDetailsPage from './pages/admin/services/ServiceDetailsPage';
 import BranchServiceGovernancePage from './pages/admin/services/BranchServiceGovernancePage';
+import GovernanceApprovalPage from './pages/admin/governance/GovernanceApprovalPage';
 
 // Phase 6: Appointment Booking & Scheduling Pages
 import BookAppointmentPage from './pages/booking/BookAppointmentPage';
@@ -230,6 +231,15 @@ export const App: React.FC = () => {
               element={
                 <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
                   <ServiceDetailsPage />
+                </ProtectedRoute>
+              }
+            />
+            {/* Governance Approvals (OWNER & BRANCH_ADMIN) */}
+            <Route
+              path="/admin/governance"
+              element={
+                <ProtectedRoute allowedRoles={['BRANCH_ADMIN', 'OWNER']}>
+                  <GovernanceApprovalPage />
                 </ProtectedRoute>
               }
             />

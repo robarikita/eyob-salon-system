@@ -1,22 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import AdminLayout from '../../../components/admin/AdminLayout';
-import { serviceApi, ServiceRitual, CreateServicePayload } from '../../../api/serviceApi';
+import {
+  serviceApi,
+  ServiceRitual,
+  CreateServicePayload,
+  ServiceCategoryItem,
+} from '../../../api/serviceApi';
 import { branchApi, BranchDTO } from '../../../api/branchApi';
-
-const DEFAULT_CATEGORIES = [
-  'Hair Styling & Couture',
-  'Bridal & Royal Special Occasions',
-  'Holistic Spa & Scalp Therapy',
-  'Advanced Aesthetics & Facials',
-  'Luxury Nail Architecture',
-];
+import { useAuth } from '../../../context/AuthContext';
 
 const DURATION_PRESETS = [15, 30, 45, 60, 90, 120];
 
 export const ServiceCatalogPage: React.FC = () => {
+  const { user } = useAuth();
+  const isBranchAdmin = user?.role === 'BRANCH_ADMIN';
+
   const [branches, setBranches] = useState<BranchDTO[]>([]);
   const [services, setServices] = useState<ServiceRitual[]>([]);
+  const [categoriesList, setCategoriesList] = useState<ServiceCategoryItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
@@ -24,6 +26,46 @@ export const ServiceCatalogPage: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [notification, setNotification] = useState<string | null>(null);
+
+  // Category Modal State
+  const [categoryModalOpen, setCategoryModalOpen] = useState<boolean>(false);
+  const [catName, setCatName] = useState<string>('');
+  const [catNameAm, setCatNameAm] = useState<string>('');
+  const [catDescription, setCatDescription] = useState<string>('');
+  const [catReason, setCatReason] = useState<string>('');
+  const [isSavingCat, setIsSavingCat] = useState<boolean>(false);
+
+  // Service Create / Edit Modal State
+  const [modalOpen, setModalOpen] = useState<boolean>(false);
+  const [editingService, setEditingService] = useState<ServiceRitual | null>(null);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isUploadingImage, setIsUploadingImage] = useState<boolean>(false);
+
+  // Service Form State
+  const [formName, setFormName] = useState<string>('');
+  const [formNameAm, setFormNameAm] = useState<string>('');
+  const [formCategory, setFormCategory] = useState<string>('');
+  const [formBasePrice, setFormBasePrice] = useState<number>(1000);
+  const [formDuration, setFormDuration] = useState<number>(60);
+  const [formDepositType, setFormDepositType] = useState<'NONE' | 'FIXED' | 'PERCENTAGE'>('NONE');
+  const [formDepositValue, setFormDepositValue] = useState<number>(20);
+  const [formImageUrl, setFormImageUrl] = useState<string>('');
+  const [formIsActive, setFormIsActive] = useState<boolean>(true);
+  const [formReason, setFormReason] = useState<string>('');
+
+  const loadCategories = async () => {
+    try {
+      const data = await serviceApi.getCategories(
+        selectedBranch === 'all' ? undefined : selectedBranch
+      );
+      setCategoriesList(data || []);
+      if (!formCategory && data && data.length > 0) {
+        setFormCategory(data[0].name);
+      }
+    } catch (err: any) {
+      console.error('Failed to load categories:', err);
+    }
+  };
 
   useEffect(() => {
     async function loadBranches() {
@@ -35,25 +77,8 @@ export const ServiceCatalogPage: React.FC = () => {
       }
     }
     loadBranches();
+    loadCategories();
   }, []);
-
-  // Create / Edit Modal State
-  const [modalOpen, setModalOpen] = useState<boolean>(false);
-  const [editingService, setEditingService] = useState<ServiceRitual | null>(null);
-  const [isSaving, setIsSaving] = useState<boolean>(false);
-  const [isUploadingImage, setIsUploadingImage] = useState<boolean>(false);
-
-  // Form State
-  const [formName, setFormName] = useState<string>('');
-  const [formNameAm, setFormNameAm] = useState<string>('');
-  const [formCategory, setFormCategory] = useState<string>('Hair Styling & Couture');
-  const [formCustomCategory, setFormCustomCategory] = useState<string>('');
-  const [formBasePrice, setFormBasePrice] = useState<number>(1000);
-  const [formDuration, setFormDuration] = useState<number>(60);
-  const [formDepositType, setFormDepositType] = useState<'NONE' | 'FIXED' | 'PERCENTAGE'>('NONE');
-  const [formDepositValue, setFormDepositValue] = useState<number>(20);
-  const [formImageUrl, setFormImageUrl] = useState<string>('');
-  const [formIsActive, setFormIsActive] = useState<boolean>(true);
 
   const fetchServices = async () => {
     setLoading(true);
@@ -62,7 +87,7 @@ export const ServiceCatalogPage: React.FC = () => {
         search: searchQuery || undefined,
         category: selectedCategory === 'All' ? undefined : selectedCategory,
         branchId: selectedBranch === 'all' ? undefined : selectedBranch,
-        isActive: selectedStatus === 'all' ? undefined : selectedStatus === 'active',
+        status: selectedStatus,
       });
       setServices(data || []);
     } catch (err: any) {
@@ -79,8 +104,9 @@ export const ServiceCatalogPage: React.FC = () => {
   const handleToggleStatus = async (id: string, name: string) => {
     try {
       const result = await serviceApi.toggleServiceStatus(id);
+      const newActive = Boolean(result.service.isActive ?? result.service.status);
       setServices((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, status: result.service.status } : s))
+        prev.map((s) => (s.id === id ? { ...s, isActive: newActive, status: newActive } : s))
       );
       setNotification(`Status updated: ${name}`);
       setTimeout(() => setNotification(null), 4000);
@@ -93,14 +119,14 @@ export const ServiceCatalogPage: React.FC = () => {
     setEditingService(null);
     setFormName('');
     setFormNameAm('');
-    setFormCategory('Hair Styling & Couture');
-    setFormCustomCategory('');
+    setFormCategory(categoriesList[0]?.name || 'Hair Styling & Couture');
     setFormBasePrice(1000);
     setFormDuration(60);
     setFormDepositType('NONE');
     setFormDepositValue(20);
     setFormImageUrl('');
     setFormIsActive(true);
+    setFormReason('');
     setModalOpen(true);
   };
 
@@ -108,19 +134,14 @@ export const ServiceCatalogPage: React.FC = () => {
     setEditingService(s);
     setFormName(s.name);
     setFormNameAm(s.nameAm || s.amharicName || '');
-    if (DEFAULT_CATEGORIES.includes(s.category)) {
-      setFormCategory(s.category);
-      setFormCustomCategory('');
-    } else {
-      setFormCategory('OTHER');
-      setFormCustomCategory(s.category);
-    }
+    setFormCategory(s.category);
     setFormBasePrice(Number(s.basePrice));
     setFormDuration(s.durationMinutes);
     setFormDepositType(s.depositType || 'NONE');
     setFormDepositValue(Number(s.depositValue ?? 0));
     setFormImageUrl(s.imageUrl || '');
-    setFormIsActive(s.status);
+    setFormIsActive(s.isActive !== undefined ? s.isActive : s.status);
+    setFormReason('');
     setModalOpen(true);
   };
 
@@ -146,20 +167,20 @@ export const ServiceCatalogPage: React.FC = () => {
       alert('Please enter service name.');
       return;
     }
-    const finalCategory = formCategory === 'OTHER' ? formCustomCategory.trim() || 'Custom' : formCategory;
 
     setIsSaving(true);
     try {
       const payload: CreateServicePayload = {
         name: formName.trim(),
         nameAm: formNameAm.trim() || undefined,
-        category: finalCategory,
+        category: formCategory,
         basePrice: Number(formBasePrice),
         durationMinutes: Number(formDuration),
         depositType: formDepositType,
         depositValue: formDepositType === 'NONE' ? 0 : Number(formDepositValue),
         imageUrl: formImageUrl.trim() || undefined,
         isActive: formIsActive,
+        reason: formReason.trim() || undefined,
       };
 
       if (editingService) {
@@ -167,10 +188,15 @@ export const ServiceCatalogPage: React.FC = () => {
         setNotification('Service updated / አገልግሎት ተቀይሯል');
       } else {
         await serviceApi.createService(payload);
-        setNotification('Service created / አዲስ አገልግሎት ተፈጥሯል');
+        setNotification(
+          isBranchAdmin
+            ? 'Proposed for approval / ለውጥ ቀርቧል'
+            : 'Service created / አዲስ አገልግሎት ተፈጥሯል'
+        );
       }
       setModalOpen(false);
       fetchServices();
+      loadCategories();
       setTimeout(() => setNotification(null), 4000);
     } catch (err: any) {
       alert(`Save failed: ${err.message}`);
@@ -179,18 +205,55 @@ export const ServiceCatalogPage: React.FC = () => {
     }
   };
 
-  // Derive dynamic categories & counts
-  const distinctCategories = Array.from(new Set(services.map((s) => s.category).filter(Boolean)));
+  const handleCreateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!catName.trim()) {
+      alert('Please enter category name.');
+      return;
+    }
+    if (isBranchAdmin && !catReason.trim()) {
+      alert('Reason is required for category proposal.');
+      return;
+    }
+
+    setIsSavingCat(true);
+    try {
+      await serviceApi.createCategory({
+        name: catName.trim(),
+        nameAm: catNameAm.trim() || undefined,
+        description: catDescription.trim() || undefined,
+        reason: catReason.trim() || undefined,
+      });
+
+      setNotification(
+        isBranchAdmin
+          ? 'Category proposed / ምድብ ቀርቧል'
+          : 'Category created / ምድብ ተፈጥሯል'
+      );
+      setCategoryModalOpen(false);
+      setCatName('');
+      setCatNameAm('');
+      setCatDescription('');
+      setCatReason('');
+      loadCategories();
+      setTimeout(() => setNotification(null), 4000);
+    } catch (err: any) {
+      alert(`Category creation failed: ${err.message}`);
+    } finally {
+      setIsSavingCat(false);
+    }
+  };
+
   const totalCount = services.length;
-  const activeCount = services.filter((s) => s.status).length;
+  const activeCount = services.filter((s) => (s.isActive !== undefined ? s.isActive : s.status)).length;
   const inactiveCount = totalCount - activeCount;
 
   return (
     <AdminLayout activePath="/admin/services">
       <div className="relative w-full text-[#FAF7F2]">
-        {/* Notification Toast */}
+        {/* Toast Alert */}
         {notification && (
-          <div className="mb-4 p-3 rounded-lg bg-[#181412] text-[#D4AF37] border border-[#D4AF37]/40 flex items-center justify-between shadow-lg text-xs font-semibold animate-fade-in">
+          <div className="mb-4 p-3 rounded-xl bg-[#181412] text-[#D4AF37] border border-[#D4AF37]/40 flex items-center justify-between shadow-lg text-xs font-semibold">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-[16px]">info</span>
               <span>{notification}</span>
@@ -217,7 +280,15 @@ export const ServiceCatalogPage: React.FC = () => {
             </h1>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setCategoryModalOpen(true)}
+              className="px-3.5 py-2 rounded-lg bg-[#181412] hover:bg-[#2C2724] text-xs font-semibold uppercase tracking-wider text-stone-300 border border-[#2C2724] transition flex items-center gap-1.5"
+            >
+              <span className="material-symbols-outlined text-[16px] text-[#D4AF37]">category</span>
+              <span>+ Category / አዲስ ምድብ</span>
+            </button>
             <Link
               to="/admin/services/pricing"
               className="px-3.5 py-2 rounded-lg bg-[#181412] hover:bg-[#2C2724] text-xs font-semibold uppercase tracking-wider text-stone-300 border border-[#2C2724] transition flex items-center gap-1.5"
@@ -236,7 +307,7 @@ export const ServiceCatalogPage: React.FC = () => {
           </div>
         </div>
 
-        {/* KPI Strip (Zero dummy text) */}
+        {/* KPI Strip */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           <div className="bg-[#181412] p-4 rounded-xl border border-[#2C2724]">
             <span className="text-[10px] uppercase tracking-wider text-stone-400 font-medium">Total / ጠቅላላ</span>
@@ -252,7 +323,7 @@ export const ServiceCatalogPage: React.FC = () => {
           </div>
           <div className="bg-[#181412] p-4 rounded-xl border border-[#2C2724]">
             <span className="text-[10px] uppercase tracking-wider text-stone-400 font-medium">Categories / ምድቦች</span>
-            <div className="text-2xl font-serif font-bold text-[#FAF7F2] mt-1">{distinctCategories.length}</div>
+            <div className="text-2xl font-serif font-bold text-[#FAF7F2] mt-1">{categoriesList.length}</div>
           </div>
         </div>
 
@@ -324,7 +395,7 @@ export const ServiceCatalogPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Category Filter Pills */}
+        {/* Dynamic Category Filter Pills */}
         <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-6 no-scrollbar">
           <button
             type="button"
@@ -337,21 +408,24 @@ export const ServiceCatalogPage: React.FC = () => {
           >
             All / ሁሉም ({totalCount})
           </button>
-          {distinctCategories.map((cat) => {
-            const count = services.filter((s) => s.category === cat).length;
-            const isSelected = selectedCategory === cat;
+          {categoriesList.map((cat) => {
+            const isSelected = selectedCategory === cat.name;
             return (
               <button
-                key={cat}
+                key={cat.id}
                 type="button"
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wider shrink-0 transition ${
+                onClick={() => setSelectedCategory(cat.name)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wider shrink-0 transition flex items-center gap-1.5 ${
                   isSelected
                     ? 'bg-[#D4AF37] text-[#0E0B09]'
                     : 'bg-[#181412] text-stone-400 hover:text-white border border-[#2C2724]'
                 }`}
               >
-                {cat} ({count})
+                <span>{cat.name}</span>
+                <span className="text-[10px] opacity-80">({cat.count})</span>
+                {cat.status === 'PENDING_APPROVAL' && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                )}
               </button>
             );
           })}
@@ -378,6 +452,9 @@ export const ServiceCatalogPage: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
             {services.map((s) => {
               const displayPrice = Number(s.effectivePrice ?? s.basePrice);
+              const isActive = s.isActive !== undefined ? s.isActive : s.status;
+              const isPending = s.approvalStatus === 'PENDING_APPROVAL';
+
               const depositLabel =
                 s.depositType === 'NONE'
                   ? 'No Deposit / ያለ ቅድመ ክፍያ'
@@ -410,17 +487,22 @@ export const ServiceCatalogPage: React.FC = () => {
                       <span className="px-2 py-0.5 rounded bg-[#181412]/90 text-stone-300 text-[10px] font-semibold uppercase">
                         {s.category.split('&')[0].trim()}
                       </span>
+                      {isPending && (
+                        <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/40 text-[9px] font-bold uppercase tracking-wider">
+                          Pending / በመጠባበቅ ላይ
+                        </span>
+                      )}
                     </div>
 
                     <div className="absolute top-2.5 right-2.5">
                       <span
                         className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                          s.status
+                          isActive
                             ? 'bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/40'
                             : 'bg-red-950/40 text-red-400 border border-red-900/40'
                         }`}
                       >
-                        {s.status ? 'Active / ንቁ' : 'Inactive / ቦዘኔ'}
+                        {isActive ? 'Active / ንቁ' : 'Inactive / ቦዘኔ'}
                       </span>
                     </div>
 
@@ -469,13 +551,13 @@ export const ServiceCatalogPage: React.FC = () => {
                         type="button"
                         onClick={() => handleToggleStatus(s.id, s.name)}
                         className={`py-1.5 px-3 rounded text-xs font-semibold uppercase tracking-wider transition ${
-                          s.status
+                          isActive
                             ? 'bg-[#2C2724] hover:bg-red-950/40 text-stone-300 hover:text-red-400'
                             : 'bg-[#D4AF37] text-[#0E0B09]'
                         }`}
                         title="Toggle Status"
                       >
-                        {s.status ? 'Deactivate' : 'Activate'}
+                        {isActive ? 'Deactivate' : 'Activate'}
                       </button>
                       <Link
                         to={`/admin/services/pricing?serviceId=${s.id}`}
@@ -500,54 +582,39 @@ export const ServiceCatalogPage: React.FC = () => {
                 <thead className="bg-[#0E0B09] text-stone-400 uppercase tracking-wider font-semibold border-b border-[#2C2724]">
                   <tr>
                     <th className="py-3 px-4">Code / ኮድ</th>
-                    <th className="py-3 px-4">Service / አገልግሎት</th>
+                    <th className="py-3 px-4">Name / ስም</th>
                     <th className="py-3 px-4">Category / ምድብ</th>
                     <th className="py-3 px-4">Duration / ቆይታ</th>
                     <th className="py-3 px-4">Price / ዋጋ</th>
-                    <th className="py-3 px-4">Deposit / ቅድመ ክፍያ</th>
-                    <th className="py-3 px-4 text-center">Status / ሁኔታ</th>
-                    <th className="py-3 px-4 text-right">Actions / እርምጃዎች</th>
+                    <th className="py-3 px-4">Status / ሁኔታ</th>
+                    <th className="py-3 px-4 text-right">Actions / ተግባር</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#2C2724]">
                   {services.map((s) => {
                     const displayPrice = Number(s.effectivePrice ?? s.basePrice);
+                    const isActive = s.isActive !== undefined ? s.isActive : s.status;
                     return (
-                      <tr key={s.id} className="hover:bg-[#201B18] transition">
-                        <td className="py-3 px-4 font-mono font-bold text-[#D4AF37]">
-                          #{s.code || s.slug?.slice(0, 8)}
+                      <tr key={s.id} className="hover:bg-[#2C2724]/40 transition">
+                        <td className="py-3 px-4 font-mono text-[#D4AF37]">{s.code || '—'}</td>
+                        <td className="py-3 px-4 font-semibold text-[#FAF7F2]">
+                          <div>{s.name}</div>
+                          {s.nameAm && <div className="text-[10px] text-stone-400">{s.nameAm}</div>}
                         </td>
-                        <td className="py-3 px-4">
-                          <span className="font-serif font-bold text-sm text-[#FAF7F2] block">{s.name}</span>
-                          <span className="text-[11px] text-stone-400 block font-serif">
-                            {s.nameAm || s.amharicName || '—'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className="px-2 py-0.5 rounded bg-[#2C2724] text-stone-300 text-[10px] font-semibold uppercase">
-                            {s.category}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 font-medium text-stone-300">{s.durationMinutes} min</td>
-                        <td className="py-3 px-4 font-bold text-[#D4AF37] font-serif">
+                        <td className="py-3 px-4 text-stone-300">{s.category}</td>
+                        <td className="py-3 px-4 text-stone-300">{s.durationMinutes} min</td>
+                        <td className="py-3 px-4 font-bold text-[#D4AF37]">
                           {displayPrice.toLocaleString()} ETB
                         </td>
-                        <td className="py-3 px-4 text-stone-400">
-                          {s.depositType === 'NONE'
-                            ? 'None'
-                            : s.depositType === 'PERCENTAGE'
-                            ? `${s.depositValue}%`
-                            : `${s.depositValue} ETB`}
-                        </td>
-                        <td className="py-3 px-4 text-center">
+                        <td className="py-3 px-4">
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                              s.status
+                              isActive
                                 ? 'bg-[#D4AF37]/20 text-[#D4AF37]'
                                 : 'bg-red-950/40 text-red-400'
                             }`}
                           >
-                            {s.status ? 'Active / ንቁ' : 'Inactive / ቦዘኔ'}
+                            {isActive ? 'Active / ንቁ' : 'Inactive / ቦዘኔ'}
                           </span>
                         </td>
                         <td className="py-3 px-4 text-right">
@@ -555,24 +622,17 @@ export const ServiceCatalogPage: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => openEditModal(s)}
-                              className="px-2 py-1 rounded bg-[#2C2724] hover:bg-[#38322e] text-xs font-semibold text-stone-200"
+                              className="px-2 py-1 rounded bg-[#2C2724] hover:bg-[#38322e] text-[#FAF7F2]"
                             >
-                              Edit / አድስ
+                              Edit
                             </button>
                             <button
                               type="button"
                               onClick={() => handleToggleStatus(s.id, s.name)}
-                              className="px-2 py-1 rounded bg-[#2C2724] hover:bg-[#38322e] text-xs font-semibold text-stone-400 hover:text-white"
+                              className="px-2 py-1 rounded bg-[#2C2724] text-stone-300 hover:text-white"
                             >
-                              Toggle / ቀይር
+                              {isActive ? 'Off' : 'On'}
                             </button>
-                            <Link
-                              to={`/admin/services/pricing?serviceId=${s.id}`}
-                              className="p-1 rounded bg-[#2C2724] hover:bg-[#38322e] text-[#D4AF37]"
-                              title="Pricing / ዋጋዎች"
-                            >
-                              <span className="material-symbols-outlined text-[16px]">payments</span>
-                            </Link>
                           </div>
                         </td>
                       </tr>
@@ -584,18 +644,18 @@ export const ServiceCatalogPage: React.FC = () => {
           </div>
         )}
 
-        {/* CREATE / EDIT MODAL */}
+        {/* CREATE / EDIT SERVICE MODAL */}
         {modalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-            <div className="bg-[#181412] w-full max-w-xl rounded-2xl border border-[#2C2724] shadow-2xl p-6 text-[#FAF7F2] max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between pb-3 border-b border-[#2C2724] mb-4">
+          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-[#181412] w-full max-w-xl rounded-2xl border border-[#2C2724] p-6 shadow-2xl my-8">
+              <div className="flex items-center justify-between pb-3 mb-4 border-b border-[#2C2724]">
                 <h2 className="text-lg font-serif font-bold text-[#FAF7F2]">
-                  {editingService ? 'Edit Service / አገልግሎት አድስ' : 'New Service / አዲስ አገልግሎት'}
+                  {editingService ? 'Edit Ritual / አድስ' : '+ New Ritual / አዲስ'}
                 </h2>
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="text-stone-400 hover:text-white"
+                  className="text-stone-400 hover:text-white p-1"
                 >
                   <span className="material-symbols-outlined">close</span>
                 </button>
@@ -631,7 +691,7 @@ export const ServiceCatalogPage: React.FC = () => {
                   />
                 </div>
 
-                {/* Category Selection */}
+                {/* Category Selection from Live DB */}
                 <div>
                   <label className="block text-[11px] uppercase tracking-wider text-stone-400 font-semibold mb-1">
                     Category / ምድብ
@@ -641,23 +701,12 @@ export const ServiceCatalogPage: React.FC = () => {
                     onChange={(e) => setFormCategory(e.target.value)}
                     className="w-full h-10 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] border border-[#2C2724] focus:outline-none focus:border-[#D4AF37]"
                   >
-                    {DEFAULT_CATEGORIES.map((cat) => (
-                      <option key={cat} value={cat}>
-                        {cat}
+                    {categoriesList.map((cat) => (
+                      <option key={cat.id} value={cat.name}>
+                        {cat.name}
                       </option>
                     ))}
-                    <option value="OTHER">Custom Category / ሌላ ምድብ</option>
                   </select>
-                  {formCategory === 'OTHER' && (
-                    <input
-                      type="text"
-                      required
-                      value={formCustomCategory}
-                      onChange={(e) => setFormCustomCategory(e.target.value)}
-                      placeholder="Enter custom category..."
-                      className="w-full h-10 px-3 mt-2 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] border border-[#2C2724] focus:outline-none focus:border-[#D4AF37]"
-                    />
-                  )}
                 </div>
 
                 {/* Duration & Base Price */}
@@ -746,6 +795,23 @@ export const ServiceCatalogPage: React.FC = () => {
                   )}
                 </div>
 
+                {/* Reason for Proposal if Branch Admin */}
+                {isBranchAdmin && (
+                  <div>
+                    <label className="block text-[11px] uppercase tracking-wider text-stone-400 font-semibold mb-1">
+                      Reason / ምክንያት *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formReason}
+                      onChange={(e) => setFormReason(e.target.value)}
+                      placeholder="Reason for proposing new service..."
+                      className="w-full h-10 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] border border-[#2C2724] focus:outline-none focus:border-[#D4AF37]"
+                    />
+                  </div>
+                )}
+
                 {/* Image Upload / URL */}
                 <div>
                   <label className="block text-[11px] uppercase tracking-wider text-stone-400 font-semibold mb-1">
@@ -815,7 +881,102 @@ export const ServiceCatalogPage: React.FC = () => {
                     disabled={isSaving || isUploadingImage}
                     className="px-5 py-2 rounded-lg bg-[#D4AF37] hover:bg-[#C59A3F] text-[#0E0B09] text-xs font-bold uppercase tracking-wider transition disabled:opacity-50"
                   >
-                    {isSaving ? 'Saving...' : 'Save / አስቀምጥ'}
+                    {isSaving ? 'Saving...' : isBranchAdmin ? 'Submit / አስገባ' : 'Save / አስቀምጥ'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* CREATE CATEGORY MODAL */}
+        {categoryModalOpen && (
+          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-[#181412] w-full max-w-md rounded-2xl border border-[#2C2724] p-6 shadow-2xl">
+              <div className="flex items-center justify-between pb-3 mb-4 border-b border-[#2C2724]">
+                <h2 className="text-lg font-serif font-bold text-[#FAF7F2]">
+                  {isBranchAdmin ? 'Propose Category / አዲስ ምድብ' : '+ New Category / አዲስ ምድብ'}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setCategoryModalOpen(false)}
+                  className="text-stone-400 hover:text-white p-1"
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateCategory} className="space-y-4">
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wider text-stone-400 font-semibold mb-1">
+                    Name (EN) / ስም *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={catName}
+                    onChange={(e) => setCatName(e.target.value)}
+                    placeholder="e.g. Scalp Restoration"
+                    className="w-full h-10 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] border border-[#2C2724] focus:outline-none focus:border-[#D4AF37]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wider text-stone-400 font-semibold mb-1">
+                    Name (አማ) / ስም በአማርኛ
+                  </label>
+                  <input
+                    type="text"
+                    value={catNameAm}
+                    onChange={(e) => setCatNameAm(e.target.value)}
+                    placeholder="ለምሳሌ፡ የራስ ቅል እንክብካቤ"
+                    className="w-full h-10 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] border border-[#2C2724] focus:outline-none focus:border-[#D4AF37]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wider text-stone-400 font-semibold mb-1">
+                    Description / መግለጫ
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={catDescription}
+                    onChange={(e) => setCatDescription(e.target.value)}
+                    placeholder="Brief description..."
+                    className="w-full p-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] border border-[#2C2724] focus:outline-none focus:border-[#D4AF37]"
+                  />
+                </div>
+
+                {isBranchAdmin && (
+                  <div>
+                    <label className="block text-[11px] uppercase tracking-wider text-stone-400 font-semibold mb-1">
+                      Reason / ምክንያት *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={catReason}
+                      onChange={(e) => setCatReason(e.target.value)}
+                      placeholder="Why is this category required?"
+                      className="w-full h-10 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] border border-[#2C2724] focus:outline-none focus:border-[#D4AF37]"
+                    />
+                  </div>
+                )}
+
+                <div className="pt-3 border-t border-[#2C2724] flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCategoryModalOpen(false)}
+                    className="px-4 py-2 rounded-lg bg-[#2C2724] hover:bg-[#38322e] text-xs font-semibold uppercase tracking-wider text-stone-300 transition"
+                  >
+                    Cancel / ሰርዝ
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingCat}
+                    className="px-5 py-2 rounded-lg bg-[#D4AF37] hover:bg-[#C59A3F] text-[#0E0B09] text-xs font-bold uppercase tracking-wider transition disabled:opacity-50"
+                  >
+                    {isSavingCat ? 'Saving...' : isBranchAdmin ? 'Submit / አስገባ' : 'Create / ፍጠር'}
                   </button>
                 </div>
               </form>

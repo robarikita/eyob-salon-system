@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { LanguageToggle } from '../common/LanguageToggle';
+import { serviceApi, NotificationItem } from '../../api/serviceApi';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -30,6 +31,67 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
 
   const [servicesOpen, setServicesOpen] = useState(isServicesSectionActive);
   const [employeesOpen, setEmployeesOpen] = useState(isEmployeeSectionActive);
+
+  // Notification System State
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const notifDropdownRef = useRef<HTMLDivElement>(null);
+
+  const loadNotifications = async () => {
+    try {
+      const list = await serviceApi.getNotifications();
+      setNotifications(list || []);
+      setUnreadCount((list || []).filter((n) => !n.isRead).length);
+    } catch {
+      // silent
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      loadNotifications();
+      const interval = setInterval(loadNotifications, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        notifDropdownRef.current &&
+        !notifDropdownRef.current.contains(event.target as Node)
+      ) {
+        setNotificationsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleMarkAllRead = async () => {
+    try {
+      await serviceApi.markAllNotificationsRead();
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      setUnreadCount(0);
+    } catch {}
+  };
+
+  const handleNotificationClick = async (notif: NotificationItem) => {
+    if (!notif.isRead) {
+      try {
+        await serviceApi.markNotificationRead(notif.id);
+        setNotifications((prev) =>
+          prev.map((n) => (n.id === notif.id ? { ...n, isRead: true } : n))
+        );
+        setUnreadCount((prev) => Math.max(0, prev - 1));
+      } catch {}
+    }
+    setNotificationsOpen(false);
+    if (notif.link) {
+      navigate(notif.link);
+    }
+  };
 
   useEffect(() => {
     if (isServicesSectionActive) setServicesOpen(true);
@@ -66,6 +128,9 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
       : []),
     ...(hasPermission('view_audit_logs')
       ? [{ label: 'Audit Logs / ኦዲት', path: '/admin/audit-logs', icon: 'policy' }]
+      : []),
+    ...(user?.role === 'OWNER' || user?.role === 'BRANCH_ADMIN'
+      ? [{ label: 'Approvals / ማጽደቂያ', path: '/admin/governance', icon: 'verified_user' }]
       : []),
   ];
 
@@ -364,13 +429,98 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
 
             <LanguageToggle />
 
-            <button
-              type="button"
-              className="relative p-2 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface transition-colors"
-            >
-              <span className="material-symbols-outlined text-[20px]">notifications</span>
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-primary-container shadow-[0_0_8px_rgba(197,155,39,0.8)]" />
-            </button>
+            {/* Live Gold Notification Dropdown */}
+            <div className="relative" ref={notifDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setNotificationsOpen((prev) => !prev)}
+                className="relative p-2 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface transition-colors cursor-pointer"
+                title="Notifications / ማስታወቂያዎች"
+              >
+                <span className="material-symbols-outlined text-[20px] text-[#D4AF37]">
+                  notifications
+                </span>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 px-1.5 py-0.2 bg-[#D4AF37] text-[#0E0B09] rounded-full text-[10px] font-bold shadow-md animate-pulse">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {notificationsOpen && (
+                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-[#181412] border border-[#2C2724] rounded-2xl shadow-2xl z-50 overflow-hidden animate-fade-in">
+                  <div className="px-4 py-3 bg-[#0E0B09] border-b border-[#2C2724] flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-[#D4AF37] text-[18px]">
+                        notifications_active
+                      </span>
+                      <span className="text-xs font-bold text-[#FAF7F2] uppercase tracking-wider">
+                        Notices / ማስታወቂያ
+                      </span>
+                    </div>
+                    {unreadCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleMarkAllRead}
+                        className="text-[10px] text-[#D4AF37] hover:underline font-semibold uppercase tracking-wider"
+                      >
+                        Mark All Read / ሁሉንም አንብብ
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="max-h-80 overflow-y-auto divide-y divide-[#2C2724]">
+                    {notifications.length === 0 ? (
+                      <div className="p-6 text-center text-stone-500 text-xs">
+                        No Notices / አዲስ ማስታወቂያ የለም
+                      </div>
+                    ) : (
+                      notifications.slice(0, 10).map((n) => (
+                        <div
+                          key={n.id}
+                          onClick={() => handleNotificationClick(n)}
+                          className={`p-3.5 hover:bg-[#2C2724]/50 cursor-pointer transition flex items-start gap-3 ${
+                            !n.isRead ? 'bg-[#0E0B09]/60' : ''
+                          }`}
+                        >
+                          <span
+                            className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
+                              !n.isRead ? 'bg-[#D4AF37]' : 'bg-transparent'
+                            }`}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-xs font-bold text-[#FAF7F2] truncate">
+                                {n.title}
+                              </span>
+                              <span className="text-[10px] text-stone-500 shrink-0">
+                                {new Date(n.createdAt).toLocaleDateString([], {
+                                  month: 'short',
+                                  day: 'numeric',
+                                })}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-stone-300 mt-0.5 line-clamp-2">
+                              {n.message}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="px-4 py-2.5 bg-[#0E0B09] border-t border-[#2C2724] text-center">
+                    <Link
+                      to="/admin/governance"
+                      onClick={() => setNotificationsOpen(false)}
+                      className="text-[11px] font-bold text-[#D4AF37] hover:underline uppercase tracking-wider"
+                    >
+                      Approvals Center / ማጽደቂያ &rarr;
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
 
             <Link
               to="/account/profile"

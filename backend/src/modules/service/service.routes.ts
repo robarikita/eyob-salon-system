@@ -27,6 +27,12 @@ router.get(
 
 // 2. Master Catalog Listing & Dynamic Categories (Public / Guests / Authenticated)
 router.get("/categories", optionalAuthenticate, ServiceController.getCategories);
+router.post(
+  "/categories",
+  authenticate,
+  authorize("OWNER", "BRANCH_ADMIN"),
+  ServiceController.createCategory
+);
 router.get("/", optionalAuthenticate, ServiceController.listServices);
 router.get("/:id", optionalAuthenticate, ServiceController.getServiceById);
 
@@ -39,11 +45,11 @@ router.post(
   ServiceController.uploadServiceImage
 );
 
-// 4. Master Ritual Curation & Modifications (OWNER or manage_services)
+// 4. Master Ritual Curation & Modifications (OWNER or BRANCH_ADMIN proposal)
 router.post(
   "/",
   authenticate,
-  requirePermission("manage_services"),
+  authorize("OWNER", "BRANCH_ADMIN"),
   ServiceController.createService
 );
 

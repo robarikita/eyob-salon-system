@@ -20,5 +20,9 @@ router.patch("/roles/:id/permissions", authorize("OWNER"), AdminController.updat
 router.patch("/branch-admins/:id/permissions", authorize("OWNER"), AdminController.updateAdminPermissions);
 router.post("/users/:id/reset-password", authorize("OWNER"), AdminController.resetUserPassword);
 
+// 4. Governance & Change Approvals
+router.get("/governance", authorize("OWNER", "BRANCH_ADMIN"), AdminController.getGovernanceRequests);
+router.post("/governance/:id/review", authorize("OWNER"), AdminController.reviewGovernanceRequest);
+
 export default router;
 

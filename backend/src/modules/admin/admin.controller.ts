@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 import prisma from "../../utils/prisma";
 import { hashPassword } from "../../utils/password";
+import { NotificationService } from "../notification/notification.service";
+import { UnauthorizedError } from "../../errors/AppError";
 
 export class AdminController {
   /**
@@ -378,6 +380,201 @@ export class AdminController {
           roleName: scopedRole.name,
           permissions: updatedRole?.permissions.map((rp) => rp.permission) || [],
         },
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/governance
+   * List governance / approval requests
+   */
+  static async getGovernanceRequests(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) throw new UnauthorizedError();
+      const status = req.query.status as string | undefined;
+
+      const where: any = {};
+      if (status && status !== "ALL") {
+        where.status = status;
+      }
+
+      if (req.user.role === "BRANCH_ADMIN") {
+        where.branchId = req.user.branchId!;
+      } // OWNER sees all
+
+      const requests = await prisma.governanceRequest.findMany({
+        where,
+        include: {
+          branch: {
+            select: { id: true, name: true, slug: true },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      // Enhance with requester name/email
+      const userIds = Array.from(new Set(requests.map((r) => r.requestedBy).filter(Boolean)));
+      const users = await prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, firstName: true, lastName: true, email: true, phone: true },
+      });
+      const userMap = new Map(users.map((u) => [u.id, u]));
+
+      const enriched = requests.map((r) => ({
+        ...r,
+        requester: userMap.get(r.requestedBy) || {
+          id: r.requestedBy,
+          name: "Branch Admin",
+        },
+      }));
+
+      res.status(200).json({
+        success: true,
+        count: enriched.length,
+        data: enriched,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/governance/:id/review
+   * Review governance proposal (Owner only)
+   */
+  static async reviewGovernanceRequest(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) throw new UnauthorizedError();
+      const id = req.params.id as string;
+      const { decision, status, action, reviewNote } = req.body;
+      const finalDecision = (decision || status || action || "").toUpperCase();
+
+      if (
+        finalDecision !== "APPROVE" &&
+        finalDecision !== "APPROVED" &&
+        finalDecision !== "REJECT" &&
+        finalDecision !== "REJECTED"
+      ) {
+        res.status(400).json({ success: false, message: "Decision must be APPROVE or REJECT" });
+        return;
+      }
+
+      const isApprove = finalDecision === "APPROVE" || finalDecision === "APPROVED";
+
+      const govRequest = await prisma.governanceRequest.findUnique({
+        where: { id },
+        include: { branch: true },
+      });
+
+      if (!govRequest) {
+        res.status(404).json({ success: false, message: "Governance request not found." });
+        return;
+      }
+
+      if (govRequest.status !== "PENDING") {
+        res.status(400).json({
+          success: false,
+          message: `Request has already been reviewed (${govRequest.status}).`,
+        });
+        return;
+      }
+
+      const payload = govRequest.payload as Record<string, any>;
+      const newStatus = isApprove ? "APPROVED" : "REJECTED";
+
+      // 1. Update the governance request record
+      const updatedRequest = await prisma.governanceRequest.update({
+        where: { id },
+        data: {
+          status: newStatus,
+          reviewedBy: req.user.id,
+          reviewNote: reviewNote || null,
+        },
+      });
+
+      // 2. Apply or reject changes based on request type
+      if (isApprove) {
+        if (govRequest.type === "CATEGORY_CREATION" && payload?.categoryId) {
+          await prisma.serviceCategory.update({
+            where: { id: payload.categoryId },
+            data: { status: "APPROVED" },
+          });
+        } else if (govRequest.type === "SERVICE_CREATION" && payload?.serviceId) {
+          await prisma.service.update({
+            where: { id: payload.serviceId },
+            data: { approvalStatus: "APPROVED" },
+          });
+        } else if (govRequest.type === "PRICE_UPDATE" && payload?.serviceId) {
+          // Upsert branch price
+          await prisma.branchServicePrice.upsert({
+            where: {
+              branchId_serviceId: {
+                branchId: govRequest.branchId,
+                serviceId: payload.serviceId,
+              },
+            },
+            update: {
+              customPrice: payload.customPrice,
+              customDurationMinutes: payload.customDurationMinutes ?? undefined,
+              depositType: payload.depositType ?? undefined,
+              depositValue: payload.depositValue ?? undefined,
+              isActive: true,
+            },
+            create: {
+              branchId: govRequest.branchId,
+              serviceId: payload.serviceId,
+              customPrice: payload.customPrice,
+              customDurationMinutes: payload.customDurationMinutes ?? null,
+              depositType: payload.depositType ?? null,
+              depositValue: payload.depositValue ?? null,
+              isActive: true,
+            },
+          });
+
+          // Log to price history
+          await prisma.servicePriceHistory.create({
+            data: {
+              serviceId: payload.serviceId,
+              branchId: govRequest.branchId,
+              price: payload.customPrice,
+              changedBy: govRequest.requestedBy,
+              reason: `Approved branch proposal: ${govRequest.reason}`,
+            },
+          });
+        }
+      } else {
+        // Rejected
+        if (govRequest.type === "CATEGORY_CREATION" && payload?.categoryId) {
+          await prisma.serviceCategory.update({
+            where: { id: payload.categoryId },
+            data: { status: "REJECTED" },
+          });
+        } else if (govRequest.type === "SERVICE_CREATION" && payload?.serviceId) {
+          await prisma.service.update({
+            where: { id: payload.serviceId },
+            data: { approvalStatus: "REJECTED" },
+          });
+        }
+      }
+
+      // 3. Notify the requesting Branch Admin
+      await NotificationService.createNotification({
+        userId: govRequest.requestedBy,
+        branchId: govRequest.branchId,
+        title: isApprove ? "Request Approved / ጸድቋል" : "Request Rejected / ውድቅ ተደርጓል",
+        message: isApprove
+          ? `Your proposal (${govRequest.type}) for ${govRequest.branch.name} was approved by Owner.`
+          : `Your proposal (${govRequest.type}) was rejected. Note: ${reviewNote || "No note provided"}.`,
+        type: "APPROVAL_NOTICE",
+        link: "/admin/services",
+      });
+
+      res.status(200).json({
+        success: true,
+        message: `Governance request ${newStatus.toLowerCase()} successfully`,
+        data: updatedRequest,
       });
     } catch (err) {
       next(err);

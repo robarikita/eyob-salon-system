@@ -4,6 +4,7 @@ import {
   CreateServiceInput,
   UpdateServiceInput,
   BranchPriceOverrideInput,
+  CreateCategoryInput,
   DepositRuleInput,
   UpdateBranchServiceRuleInput,
 } from "./service.schema";
@@ -13,6 +14,7 @@ import {
   ConflictError,
 } from "../../errors/AppError";
 import { uploadImage } from "../../utils/cloudinary";
+import { NotificationService } from "../notification/notification.service";
 
 interface CurrentUser {
   id: string;
@@ -123,27 +125,44 @@ export class ServiceRitualService {
       category?: string;
       branchId?: string;
       status?: string; // "active" | "inactive" | "all"
+      approvalStatus?: string;
     },
     currentUser?: CurrentUser
   ) {
     const where: any = {};
 
-    // Status filter
-    if (filter.status === "active") {
+    const isElevated = currentUser?.role === "OWNER" || currentUser?.role === "BRANCH_ADMIN";
+
+    // Customer/Guest Isolation: Strictly active & approved
+    if (!isElevated) {
       where.isActive = true;
-    } else if (filter.status === "inactive") {
-      where.isActive = false;
+      where.approvalStatus = "APPROVED";
+    } else {
+      // Status filter
+      if (filter.status === "active") {
+        where.isActive = true;
+      } else if (filter.status === "inactive") {
+        where.isActive = false;
+      }
+
+      if (filter.approvalStatus && filter.approvalStatus !== "all") {
+        where.approvalStatus = filter.approvalStatus;
+      }
     }
 
     // Category filter
     if (filter.category && filter.category !== "all" && filter.category !== "All Rituals") {
-      where.category = { equals: filter.category, mode: "insensitive" };
+      where.OR = [
+        { category: { equals: filter.category, mode: "insensitive" } },
+        { serviceCategory: { name: { equals: filter.category, mode: "insensitive" } } },
+        { serviceCategory: { slug: { equals: filter.category, mode: "insensitive" } } },
+      ];
     }
 
     // Search query
     if (filter.search && filter.search.trim()) {
       const q = filter.search.trim();
-      where.OR = [
+      const searchConditions: any[] = [
         { code: { contains: q, mode: "insensitive" } },
         { name: { contains: q, mode: "insensitive" } },
         { amharicName: { contains: q, mode: "insensitive" } },
@@ -152,11 +171,21 @@ export class ServiceRitualService {
         { subCategory: { contains: q, mode: "insensitive" } },
         { description: { contains: q, mode: "insensitive" } },
       ];
+
+      if (where.OR) {
+        where.AND = [{ OR: where.OR }, { OR: searchConditions }];
+        delete where.OR;
+      } else {
+        where.OR = searchConditions;
+      }
     }
 
     const services = await prisma.service.findMany({
       where,
       include: {
+        serviceCategory: {
+          select: { id: true, name: true, nameAm: true, slug: true, status: true },
+        },
         branchPrices: {
           include: {
             branch: { select: { id: true, name: true, slug: true } },
@@ -282,7 +311,11 @@ export class ServiceRitualService {
         nameAm: s.nameAm || s.amharicName,
         amharicName: s.nameAm || s.amharicName,
         slug: s.slug,
-        category: s.category,
+        category: s.serviceCategory?.name || s.category,
+        categoryId: s.categoryId,
+        serviceCategory: s.serviceCategory,
+        approvalStatus: s.approvalStatus,
+        pendingChanges: s.pendingChanges,
         subCategory: s.subCategory,
         description: s.description,
         descriptionAm: s.descriptionAm,
@@ -350,6 +383,9 @@ export class ServiceRitualService {
         OR: [{ id: idOrCode }, { code: idOrCode }, { slug: idOrCode }],
       },
       include: {
+        serviceCategory: {
+          select: { id: true, name: true, nameAm: true, slug: true, status: true },
+        },
         branchPrices: {
           include: {
             branch: { select: { id: true, name: true, slug: true, city: true } },
@@ -445,7 +481,11 @@ export class ServiceRitualService {
       nameAm: service.nameAm || service.amharicName,
       amharicName: service.nameAm || service.amharicName,
       slug: service.slug,
-      category: service.category,
+      category: service.serviceCategory?.name || service.category,
+      categoryId: service.categoryId,
+      serviceCategory: service.serviceCategory,
+      approvalStatus: service.approvalStatus,
+      pendingChanges: service.pendingChanges,
       subCategory: service.subCategory,
       description: service.description,
       descriptionAm: service.descriptionAm,
@@ -544,7 +584,28 @@ export class ServiceRitualService {
 
     const depositVal = data.depositValue !== undefined ? data.depositValue : data.depositAmount || 0;
 
-    return prisma.$transaction(async (tx) => {
+    let categoryId = data.categoryId || null;
+    let categoryName = data.category || "Hair Styling & Couture";
+    if (categoryId) {
+      const cat = await prisma.serviceCategory.findUnique({ where: { id: categoryId } });
+      if (cat) {
+        categoryName = cat.name;
+      }
+    } else if (categoryName) {
+      const cat = await prisma.serviceCategory.findFirst({
+        where: { name: { equals: categoryName, mode: "insensitive" } },
+      });
+      if (cat) {
+        categoryId = cat.id;
+        categoryName = cat.name;
+      }
+    }
+
+    const isBranchAdmin = currentUser.role === "BRANCH_ADMIN";
+    const initialApprovalStatus = isBranchAdmin ? "PENDING_APPROVAL" : "APPROVED";
+    const initialActive = data.isActive !== undefined ? Boolean(data.isActive) : true;
+
+    const result = await prisma.$transaction(async (tx) => {
       const service = await tx.service.create({
         data: {
           code,
@@ -552,7 +613,8 @@ export class ServiceRitualService {
           nameAm: data.nameAm || data.amharicName || null,
           amharicName: data.nameAm || data.amharicName || null,
           slug,
-          category: data.category,
+          category: categoryName,
+          categoryId,
           subCategory: data.subCategory || null,
           description: data.description || null,
           descriptionAm: data.descriptionAm || null,
@@ -570,7 +632,8 @@ export class ServiceRitualService {
           requiresApprentice: data.requiresApprentice || false,
           requiredProtocols: data.requiredProtocols || [],
           standardCommission: data.standardCommission !== undefined ? data.standardCommission : null,
-          isActive: true,
+          isActive: initialActive,
+          approvalStatus: initialApprovalStatus,
         },
       });
 
@@ -581,15 +644,21 @@ export class ServiceRitualService {
           branchId: null,
           price: data.basePrice,
           changedBy: currentUser.id,
-          reason: "Initial master service creation baseline",
+          reason: isBranchAdmin
+            ? `Proposed service creation: ${data.reason || "Branch proposal"}`
+            : "Initial master service creation baseline",
         },
       });
 
       // Target branches deployment
       let targetBranches = data.branchIds;
       if (!targetBranches || targetBranches.length === 0) {
-        const allBranches = await tx.branch.findMany({ where: { isActive: true } });
-        targetBranches = allBranches.map((b) => b.id);
+        if (isBranchAdmin && currentUser.branchId) {
+          targetBranches = [currentUser.branchId];
+        } else {
+          const allBranches = await tx.branch.findMany({ where: { isActive: true } });
+          targetBranches = allBranches.map((b) => b.id);
+        }
       }
 
       for (const branchId of targetBranches) {
@@ -602,7 +671,7 @@ export class ServiceRitualService {
             customTurnaround: null,
             requiredDeposit: depositVal,
             workstationLock: null,
-            isActive: true,
+            isActive: initialActive,
           },
         });
 
@@ -614,7 +683,28 @@ export class ServiceRitualService {
             customDurationMinutes: data.durationMinutes,
             depositType: null,
             depositValue: null,
-            isActive: true,
+            isActive: initialActive,
+          },
+        });
+      }
+
+      if (isBranchAdmin && currentUser.branchId) {
+        await tx.governanceRequest.create({
+          data: {
+            type: "SERVICE_CREATION",
+            status: "PENDING",
+            branchId: currentUser.branchId,
+            requestedBy: currentUser.id,
+            reason: data.reason || "New ritual creation proposal",
+            payload: {
+              serviceId: service.id,
+              name: service.name,
+              code: service.code,
+              category: service.category,
+              categoryId: service.categoryId,
+              basePrice: Number(service.basePrice),
+              durationMinutes: service.durationMinutes,
+            },
           },
         });
       }
@@ -622,12 +712,25 @@ export class ServiceRitualService {
       return tx.service.findUnique({
         where: { id: service.id },
         include: {
+          serviceCategory: true,
           branchPrices: { include: { branch: true } },
           branchServices: { include: { branch: true } },
           priceHistory: true,
         },
       });
     });
+
+    if (isBranchAdmin && currentUser.branchId) {
+      await NotificationService.notifyOwners({
+        title: "New Service Proposal / አዲስ አገልግሎት ጥያቄ",
+        message: `Branch Admin proposed new ritual: ${data.name}`,
+        type: "GOVERNANCE_REQUEST",
+        branchId: currentUser.branchId,
+        link: "/admin/governance",
+      });
+    }
+
+    return result;
   }
 
   /**
@@ -663,7 +766,17 @@ export class ServiceRitualService {
       updateData.amharicName = data.nameAm || data.amharicName;
     }
     if (data.slug) updateData.slug = data.slug;
-    if (data.category) updateData.category = data.category;
+    if (data.categoryId !== undefined) {
+      updateData.categoryId = data.categoryId;
+      if (data.categoryId) {
+        const cat = await prisma.serviceCategory.findUnique({ where: { id: data.categoryId } });
+        if (cat) {
+          updateData.category = cat.name;
+        }
+      }
+    } else if (data.category) {
+      updateData.category = data.category;
+    }
     if (data.subCategory !== undefined) updateData.subCategory = data.subCategory;
     if (data.description !== undefined) updateData.description = data.description;
     if (data.descriptionAm !== undefined) updateData.descriptionAm = data.descriptionAm;
@@ -736,7 +849,42 @@ export class ServiceRitualService {
     const branch = await prisma.branch.findUnique({ where: { id: data.branchId } });
     if (!branch) throw new NotFoundError("Branch not found.");
 
-    return prisma.$transaction(async (tx) => {
+    // If Branch Admin submitting for approval
+    if (currentUser.role === "BRANCH_ADMIN" && (data.submitForApproval || data.requiresApproval)) {
+      const govReq = await prisma.governanceRequest.create({
+        data: {
+          type: "PRICE_UPDATE",
+          status: "PENDING",
+          branchId: data.branchId,
+          requestedBy: currentUser.id,
+          reason: data.reason || `Price override proposal for ${service.name}`,
+          payload: {
+            serviceId,
+            branchId: data.branchId,
+            customPrice: data.customPrice,
+            customDurationMinutes: data.customDurationMinutes ?? null,
+            depositType: data.depositType ?? null,
+            depositValue: data.depositValue ?? null,
+          },
+        },
+      });
+
+      await NotificationService.notifyOwners({
+        title: "Price Override Proposal / የዋጋ ማሻሻያ ጥያቄ",
+        message: `${branch.name}: Proposed price for ${service.name} to ${data.customPrice} ETB.`,
+        type: "GOVERNANCE_REQUEST",
+        branchId: data.branchId,
+        link: "/admin/governance",
+      });
+
+      return {
+        pendingApproval: true,
+        governanceRequestId: govReq.id,
+        message: "Price change submitted for Owner approval",
+      };
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
       // 1. Upsert BranchServicePrice
       const branchPrice = await tx.branchServicePrice.upsert({
         where: {
@@ -803,6 +951,17 @@ export class ServiceRitualService {
 
       return branchPrice;
     });
+
+    if (currentUser.role === "OWNER") {
+      await NotificationService.notifyBranchAdmins(data.branchId, {
+        title: "Branch Price Updated / የዋጋ ለውጥ",
+        message: `Owner updated price for ${service.name} to ${data.customPrice} ETB.`,
+        type: "OWNER_MUTATION",
+        link: "/admin/services",
+      });
+    }
+
+    return result;
   }
 
   /**
@@ -1078,27 +1237,90 @@ export class ServiceRitualService {
   /**
    * Get dynamic distinct category aggregations with service counts
    */
-  static async getCategories(branchIdOrSlug?: string) {
+  static async getCategories(_branchIdOrSlug?: string, currentUser?: CurrentUser) {
+    const isElevated = currentUser?.role === "OWNER" || currentUser?.role === "BRANCH_ADMIN";
     const where: any = {};
-    if (branchIdOrSlug && branchIdOrSlug !== "all") {
-      where.branchServices = {
-        some: {
-          OR: [{ branchId: branchIdOrSlug }, { branch: { slug: branchIdOrSlug } }],
-          isActive: true,
-        },
-      };
+
+    if (!isElevated) {
+      where.status = "APPROVED";
+    } else if (currentUser?.role === "BRANCH_ADMIN") {
+      where.OR = [
+        { status: "APPROVED" },
+        { branchId: currentUser.branchId },
+      ];
     }
 
-    const categoriesRaw = await prisma.service.groupBy({
-      by: ["category"],
+    const categories = await prisma.serviceCategory.findMany({
       where,
-      _count: { _all: true },
-      orderBy: { category: "asc" },
+      include: {
+        services: {
+          where: isElevated ? undefined : { isActive: true, approvalStatus: "APPROVED" },
+          select: { id: true, isActive: true, approvalStatus: true },
+        },
+      },
+      orderBy: { name: "asc" },
     });
 
-    return categoriesRaw.map((c) => ({
-      name: c.category,
-      count: c._count._all,
+    return categories.map((c) => ({
+      id: c.id,
+      name: c.name,
+      nameAm: c.nameAm,
+      slug: c.slug,
+      description: c.description,
+      status: c.status,
+      branchId: c.branchId,
+      count: c.services.length,
+      activeCount: c.services.filter((s) => s.isActive && s.approvalStatus === "APPROVED").length,
     }));
+  }
+
+  /**
+   * Create dynamic category (Owner instant approval vs. Branch Admin proposal)
+   */
+  static async createCategory(data: CreateCategoryInput, currentUser: CurrentUser) {
+    const slug = `${data.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}-${Date.now().toString(36)}`;
+
+    const isBranchAdmin = currentUser.role === "BRANCH_ADMIN";
+    const initialStatus = isBranchAdmin ? "PENDING_APPROVAL" : "APPROVED";
+
+    const category = await prisma.serviceCategory.create({
+      data: {
+        name: data.name,
+        nameAm: data.nameAm || null,
+        slug,
+        description: data.description || null,
+        status: initialStatus,
+        branchId: isBranchAdmin ? currentUser.branchId : null,
+        requestedBy: currentUser.id,
+      },
+    });
+
+    if (isBranchAdmin && currentUser.branchId) {
+      await prisma.governanceRequest.create({
+        data: {
+          type: "CATEGORY_CREATION",
+          status: "PENDING",
+          branchId: currentUser.branchId,
+          requestedBy: currentUser.id,
+          reason: data.reason || "Branch category proposal",
+          payload: {
+            categoryId: category.id,
+            name: category.name,
+            nameAm: category.nameAm,
+            description: category.description,
+          },
+        },
+      });
+
+      await NotificationService.notifyOwners({
+        title: "Category Proposal / አዲስ ምድብ ጥያቄ",
+        message: `Branch Admin proposed new category: ${category.name}`,
+        type: "GOVERNANCE_REQUEST",
+        branchId: currentUser.branchId,
+        link: "/admin/governance",
+      });
+    }
+
+    return category;
   }
 }

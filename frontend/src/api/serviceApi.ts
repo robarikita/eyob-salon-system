@@ -76,8 +76,12 @@ export interface ServiceRitual {
   amharicName?: string | null;
   slug?: string;
   category: string;
+  categoryId?: string | null;
+  approvalStatus?: 'APPROVED' | 'PENDING_APPROVAL' | 'REJECTED';
+  pendingChanges?: any;
   subCategory?: string | null;
   description?: string | null;
+  descriptionAm?: string | null;
   imageUrl?: string | null;
   basePrice: number;
   durationMinutes: number;
@@ -94,6 +98,7 @@ export interface ServiceRitual {
   requiredProtocols: string[];
   standardCommission?: number | null;
   status: boolean;
+  isActive?: boolean;
   branchPrices?: BranchPriceItem[];
   priceHistory?: ServicePriceHistoryItem[];
   branchServices?: BranchServiceRule[];
@@ -103,6 +108,55 @@ export interface ServiceRitual {
   effectiveTurnaround?: number;
   effectiveDeposit?: number;
   effectiveIsActive?: boolean;
+}
+
+export interface GovernanceRequestItem {
+  id: string;
+  type: 'CATEGORY_CREATION' | 'SERVICE_CREATION' | 'PRICE_UPDATE' | 'SERVICE_MUTATION';
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  branchId: string;
+  requestedBy: string;
+  reviewedBy?: string | null;
+  reason: string;
+  payload: any;
+  reviewNote?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  branch: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+  requester?: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+  };
+}
+
+export interface NotificationItem {
+  id: string;
+  userId: string;
+  branchId?: string | null;
+  title: string;
+  message: string;
+  type: 'GOVERNANCE_REQUEST' | 'APPROVAL_NOTICE' | 'OWNER_MUTATION';
+  link?: string | null;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface ServiceCategoryItem {
+  id: string;
+  name: string;
+  nameAm?: string | null;
+  slug: string;
+  description?: string | null;
+  status: 'APPROVED' | 'PENDING_APPROVAL' | 'REJECTED';
+  branchId?: string | null;
+  count: number;
+  activeCount?: number;
 }
 
 export interface BranchGovernanceData {
@@ -140,6 +194,8 @@ export interface CreateServicePayload {
   nameAm?: string;
   amharicName?: string;
   category: string;
+  categoryId?: string;
+  reason?: string;
   subCategory?: string;
   description?: string;
   imageUrl?: string;
@@ -580,13 +636,22 @@ export const serviceApi = {
     search?: string;
     category?: string;
     branchId?: string;
+    status?: string;
     isActive?: boolean | string;
+    approvalStatus?: string;
   }): Promise<ServiceRitual[]> {
     const searchParams = new URLSearchParams();
     if (params?.search) searchParams.append('search', params.search);
     if (params?.category && params.category !== 'All') searchParams.append('category', params.category);
     if (params?.branchId && params.branchId !== 'all') searchParams.append('branchId', params.branchId);
-    if (params?.isActive !== undefined) searchParams.append('isActive', String(params.isActive));
+    if (params?.status) {
+      searchParams.append('status', params.status);
+    } else if (params?.isActive !== undefined) {
+      searchParams.append('isActive', String(params.isActive));
+    }
+    if (params?.approvalStatus && params.approvalStatus !== 'all') {
+      searchParams.append('approvalStatus', params.approvalStatus);
+    }
 
     const res = await fetch(`${API_BASE}/services?${searchParams.toString()}`, {
       headers: getAuthHeaders(),
@@ -601,13 +666,35 @@ export const serviceApi = {
   /**
    * Get dynamic distinct category aggregations with service counts
    */
-  async getCategories(branchId?: string): Promise<Array<{ name: string; count: number }>> {
+  async getCategories(branchId?: string): Promise<ServiceCategoryItem[]> {
     const url = branchId && branchId !== 'all' ? `${API_BASE}/services/categories?branchId=${branchId}` : `${API_BASE}/services/categories`;
     const res = await fetch(url, {
       headers: getAuthHeaders(),
     });
     if (!res.ok) {
       throw new Error(`Failed to load categories (HTTP ${res.status})`);
+    }
+    const json = await res.json();
+    return json.data || json;
+  },
+
+  /**
+   * Create dynamic category (Instant for Owner, Proposal for Branch Admin)
+   */
+  async createCategory(payload: {
+    name: string;
+    nameAm?: string;
+    description?: string;
+    reason?: string;
+  }): Promise<ServiceCategoryItem> {
+    const res = await fetch(`${API_BASE}/services/categories`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Failed to create category (${res.status})`);
     }
     const json = await res.json();
     return json.data || json;
@@ -698,6 +785,8 @@ export const serviceApi = {
       depositType?: 'NONE' | 'FIXED' | 'PERCENTAGE' | null;
       depositValue?: number | null;
       reason?: string;
+      submitForApproval?: boolean;
+      requiresApproval?: boolean;
     }
   ) {
     const res = await fetch(`${API_BASE}/services/${serviceId}/branch-price`, {
@@ -708,6 +797,89 @@ export const serviceApi = {
     if (!res.ok) {
       const errJson = await res.json().catch(() => ({}));
       throw new Error(errJson.message || `Failed to update branch price (${res.status})`);
+    }
+    const json = await res.json();
+    return json.data || json;
+  },
+
+  /**
+   * Retrieve governance change requests for review
+   */
+  async getGovernanceRequests(status?: string): Promise<GovernanceRequestItem[]> {
+    const query = status && status !== 'ALL' ? `?status=${status}` : '';
+    const res = await fetch(`${API_BASE}/admin/governance${query}`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Failed to fetch governance requests (${res.status})`);
+    }
+    const json = await res.json();
+    return json.data || json;
+  },
+
+  /**
+   * Review governance request (Owner APPROVE or REJECT)
+   */
+  async reviewGovernanceRequest(
+    id: string,
+    payload: { decision: 'APPROVE' | 'REJECT'; reviewNote?: string }
+  ): Promise<any> {
+    const res = await fetch(`${API_BASE}/admin/governance/${id}/review`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Failed to submit review (${res.status})`);
+    }
+    const json = await res.json();
+    return json.data || json;
+  },
+
+  /**
+   * List user notifications
+   */
+  async getNotifications(): Promise<NotificationItem[]> {
+    const res = await fetch(`${API_BASE}/notifications`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Failed to fetch notifications (${res.status})`);
+    }
+    const json = await res.json();
+    return json.data || json;
+  },
+
+  /**
+   * Mark single notification as read
+   */
+  async markNotificationRead(id: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/notifications/${id}/read`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Failed to mark notification read (${res.status})`);
+    }
+    const json = await res.json();
+    return json.data || json;
+  },
+
+  /**
+   * Mark all notifications as read
+   */
+  async markAllNotificationsRead(): Promise<any> {
+    const res = await fetch(`${API_BASE}/notifications/read-all`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Failed to mark all read (${res.status})`);
     }
     const json = await res.json();
     return json.data || json;

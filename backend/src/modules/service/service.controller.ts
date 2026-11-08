@@ -4,6 +4,7 @@ import {
   createServiceSchema,
   updateServiceSchema,
   branchPriceOverrideSchema,
+  createCategorySchema,
   depositRuleSchema,
   updateBranchServiceRuleSchema,
 } from "./service.schema";
@@ -227,10 +228,25 @@ export class ServiceController {
   static async getCategories(req: Request, res: Response, next: NextFunction) {
     try {
       const branchId = typeof req.query.branchId === "string" ? req.query.branchId : undefined;
-      const categories = await ServiceRitualService.getCategories(branchId);
+      const categories = await ServiceRitualService.getCategories(branchId, req.user);
       res.status(200).json({
         success: true,
+        count: categories.length,
         data: categories,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async createCategory(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) throw new UnauthorizedError();
+      const data = createCategorySchema.parse(req.body);
+      const category = await ServiceRitualService.createCategory(data, req.user);
+      res.status(201).json({
+        success: true,
+        data: category,
       });
     } catch (error) {
       next(error);
