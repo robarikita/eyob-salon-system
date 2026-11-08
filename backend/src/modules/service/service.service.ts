@@ -5,6 +5,7 @@ import {
   UpdateServiceInput,
   BranchPriceOverrideInput,
   CreateCategoryInput,
+  UpdateCategoryInput,
   DepositRuleInput,
   UpdateBranchServiceRuleInput,
 } from "./service.schema";
@@ -12,6 +13,7 @@ import {
   NotFoundError,
   ForbiddenError,
   ConflictError,
+  ValidationError,
 } from "../../errors/AppError";
 import { uploadImage } from "../../utils/cloudinary";
 import { NotificationService } from "../notification/notification.service";
@@ -129,62 +131,66 @@ export class ServiceRitualService {
     },
     currentUser?: CurrentUser
   ) {
-    const where: any = {};
-
     const isElevated = currentUser?.role === "OWNER" || currentUser?.role === "BRANCH_ADMIN";
+    const conditions: any[] = [];
 
-    // Customer/Guest Isolation: Strictly active & approved
+    // Customer/Guest Isolation: Strictly active & approved (including category status)
     if (!isElevated) {
-      where.isActive = true;
-      where.approvalStatus = "APPROVED";
+      conditions.push({ isActive: true });
+      conditions.push({ approvalStatus: "APPROVED" });
+      conditions.push({
+        OR: [
+          { serviceCategory: null },
+          { serviceCategory: { isActive: true, status: "APPROVED" } },
+        ],
+      });
     } else {
       // Status filter
       if (filter.status === "active") {
-        where.isActive = true;
+        conditions.push({ isActive: true });
       } else if (filter.status === "inactive") {
-        where.isActive = false;
+        conditions.push({ isActive: false });
       }
 
       if (filter.approvalStatus && filter.approvalStatus !== "all") {
-        where.approvalStatus = filter.approvalStatus;
+        conditions.push({ approvalStatus: filter.approvalStatus });
       }
     }
 
     // Category filter
     if (filter.category && filter.category !== "all" && filter.category !== "All Rituals") {
-      where.OR = [
-        { category: { equals: filter.category, mode: "insensitive" } },
-        { serviceCategory: { name: { equals: filter.category, mode: "insensitive" } } },
-        { serviceCategory: { slug: { equals: filter.category, mode: "insensitive" } } },
-      ];
+      conditions.push({
+        OR: [
+          { category: { equals: filter.category, mode: "insensitive" } },
+          { serviceCategory: { name: { equals: filter.category, mode: "insensitive" } } },
+          { serviceCategory: { slug: { equals: filter.category, mode: "insensitive" } } },
+        ],
+      });
     }
 
     // Search query
     if (filter.search && filter.search.trim()) {
       const q = filter.search.trim();
-      const searchConditions: any[] = [
-        { code: { contains: q, mode: "insensitive" } },
-        { name: { contains: q, mode: "insensitive" } },
-        { amharicName: { contains: q, mode: "insensitive" } },
-        { nameAm: { contains: q, mode: "insensitive" } },
-        { category: { contains: q, mode: "insensitive" } },
-        { subCategory: { contains: q, mode: "insensitive" } },
-        { description: { contains: q, mode: "insensitive" } },
-      ];
-
-      if (where.OR) {
-        where.AND = [{ OR: where.OR }, { OR: searchConditions }];
-        delete where.OR;
-      } else {
-        where.OR = searchConditions;
-      }
+      conditions.push({
+        OR: [
+          { code: { contains: q, mode: "insensitive" } },
+          { name: { contains: q, mode: "insensitive" } },
+          { amharicName: { contains: q, mode: "insensitive" } },
+          { nameAm: { contains: q, mode: "insensitive" } },
+          { category: { contains: q, mode: "insensitive" } },
+          { subCategory: { contains: q, mode: "insensitive" } },
+          { description: { contains: q, mode: "insensitive" } },
+        ],
+      });
     }
+
+    const where: any = conditions.length > 0 ? { AND: conditions } : {};
 
     const services = await prisma.service.findMany({
       where,
       include: {
         serviceCategory: {
-          select: { id: true, name: true, nameAm: true, slug: true, status: true },
+          select: { id: true, name: true, nameAm: true, slug: true, status: true, isActive: true },
         },
         branchPrices: {
           include: {
@@ -849,15 +855,19 @@ export class ServiceRitualService {
     const branch = await prisma.branch.findUnique({ where: { id: data.branchId } });
     if (!branch) throw new NotFoundError("Branch not found.");
 
-    // If Branch Admin submitting for approval
-    if (currentUser.role === "BRANCH_ADMIN" && (data.submitForApproval || data.requiresApproval)) {
+    // If Branch Admin submitting price override
+    if (currentUser.role === "BRANCH_ADMIN") {
+      if (!data.reason || !data.reason.trim()) {
+        throw new ValidationError("Reason is required / የለውጡ ምክንያት ያስፈልጋል");
+      }
+
       const govReq = await prisma.governanceRequest.create({
         data: {
           type: "PRICE_UPDATE",
           status: "PENDING",
           branchId: data.branchId,
           requestedBy: currentUser.id,
-          reason: data.reason || `Price override proposal for ${service.name}`,
+          reason: data.reason.trim(),
           payload: {
             serviceId,
             branchId: data.branchId,
@@ -869,9 +879,14 @@ export class ServiceRitualService {
         },
       });
 
+      const userRecord = await prisma.user.findUnique({ where: { id: currentUser.id } });
+      const requesterName = userRecord
+        ? `${userRecord.firstName || ""} ${userRecord.lastName || ""}`.trim() || userRecord.email
+        : "Branch Admin";
+
       await NotificationService.notifyOwners({
-        title: "Price Override Proposal / የዋጋ ማሻሻያ ጥያቄ",
-        message: `${branch.name}: Proposed price for ${service.name} to ${data.customPrice} ETB.`,
+        title: "Price Proposal / የዋጋ ጥያቄ",
+        message: `${requesterName} proposed new price for ${service.name}. Reason: ${data.reason.trim()}`,
         type: "GOVERNANCE_REQUEST",
         branchId: data.branchId,
         link: "/admin/governance",
@@ -880,7 +895,7 @@ export class ServiceRitualService {
       return {
         pendingApproval: true,
         governanceRequestId: govReq.id,
-        message: "Price change submitted for Owner approval",
+        message: "Price update proposal submitted for Owner approval",
       };
     }
 
@@ -1243,6 +1258,7 @@ export class ServiceRitualService {
 
     if (!isElevated) {
       where.status = "APPROVED";
+      where.isActive = true;
     } else if (currentUser?.role === "BRANCH_ADMIN") {
       where.OR = [
         { status: "APPROVED" },
@@ -1268,6 +1284,7 @@ export class ServiceRitualService {
       slug: c.slug,
       description: c.description,
       status: c.status,
+      isActive: c.isActive,
       branchId: c.branchId,
       count: c.services.length,
       activeCount: c.services.filter((s) => s.isActive && s.approvalStatus === "APPROVED").length,
@@ -1290,6 +1307,7 @@ export class ServiceRitualService {
         slug,
         description: data.description || null,
         status: initialStatus,
+        isActive: true,
         branchId: isBranchAdmin ? currentUser.branchId : null,
         requestedBy: currentUser.id,
       },
@@ -1322,5 +1340,92 @@ export class ServiceRitualService {
     }
 
     return category;
+  }
+
+  /**
+   * Update category parameters
+   */
+  static async updateCategory(id: string, data: UpdateCategoryInput, _currentUser?: CurrentUser) {
+    const existing = await prisma.serviceCategory.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundError("Category not found.");
+    }
+
+    const updated = await prisma.serviceCategory.update({
+      where: { id },
+      data: {
+        name: data.name !== undefined ? data.name : undefined,
+        nameAm: data.nameAm !== undefined ? data.nameAm : undefined,
+        description: data.description !== undefined ? data.description : undefined,
+        isActive: data.isActive !== undefined ? data.isActive : undefined,
+      },
+    });
+
+    if (data.name && data.name !== existing.name) {
+      await prisma.service.updateMany({
+        where: { categoryId: id },
+        data: { category: data.name },
+      });
+    }
+
+    return updated;
+  }
+
+  /**
+   * Toggle category active status
+   */
+  static async toggleCategoryStatus(id: string, _currentUser?: CurrentUser) {
+    const existing = await prisma.serviceCategory.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundError("Category not found.");
+    }
+
+    const updated = await prisma.serviceCategory.update({
+      where: { id },
+      data: { isActive: !existing.isActive },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Delete category safely (unlinks services)
+   */
+  static async deleteCategory(id: string, _currentUser?: CurrentUser) {
+    const existing = await prisma.serviceCategory.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundError("Category not found.");
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.service.updateMany({
+        where: { categoryId: id },
+        data: { categoryId: null },
+      });
+      await tx.serviceCategory.delete({ where: { id } });
+    });
+
+    return { message: "Category deleted / ምድቡ ተሰርዟል" };
+  }
+
+  /**
+   * Permanently delete a service ritual and cascade related configurations
+   */
+  static async deleteService(id: string, _currentUser?: CurrentUser) {
+    const service = await prisma.service.findUnique({ where: { id } });
+    if (!service) {
+      throw new NotFoundError("Service ritual not found.");
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.servicePriceHistory.deleteMany({ where: { serviceId: id } });
+      await tx.branchServicePrice.deleteMany({ where: { serviceId: id } });
+      await tx.branchService.deleteMany({ where: { serviceId: id } });
+      await tx.employeeService.deleteMany({ where: { serviceId: id } });
+      await tx.bookingItem.updateMany({ where: { serviceId: id }, data: { serviceId: null } });
+      await tx.service.delete({ where: { id } });
+    });
+
+    return { message: "Service permanently deleted / አገልግሎቱ ተሰርዟል" };
   }
 }

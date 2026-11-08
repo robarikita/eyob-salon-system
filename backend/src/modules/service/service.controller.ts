@@ -5,6 +5,7 @@ import {
   updateServiceSchema,
   branchPriceOverrideSchema,
   createCategorySchema,
+  updateCategorySchema,
   depositRuleSchema,
   updateBranchServiceRuleSchema,
 } from "./service.schema";
@@ -101,6 +102,7 @@ export class ServiceController {
 
       res.status(200).json({
         success: true,
+        ...(result as any),
         data: result,
       });
     } catch (error) {
@@ -172,8 +174,25 @@ export class ServiceController {
 
       res.status(200).json({
         success: true,
+        service: result.service,
         data: result.service,
         warning: result.warning,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async deleteService(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) throw new UnauthorizedError();
+      const result = await ServiceRitualService.deleteService(
+        req.params.id as string,
+        req.user
+      );
+      res.status(200).json({
+        success: true,
+        message: result.message,
       });
     } catch (error) {
       next(error);
@@ -247,6 +266,56 @@ export class ServiceController {
       res.status(201).json({
         success: true,
         data: category,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async updateCategory(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) throw new UnauthorizedError();
+      const data = updateCategorySchema.parse(req.body);
+      const category = await ServiceRitualService.updateCategory(
+        req.params.id as string,
+        data,
+        req.user
+      );
+      res.status(200).json({
+        success: true,
+        data: category,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async toggleCategoryStatus(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) throw new UnauthorizedError();
+      const category = await ServiceRitualService.toggleCategoryStatus(
+        req.params.id as string,
+        req.user
+      );
+      res.status(200).json({
+        success: true,
+        data: category,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async deleteCategory(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) throw new UnauthorizedError();
+      const result = await ServiceRitualService.deleteCategory(
+        req.params.id as string,
+        req.user
+      );
+      res.status(200).json({
+        success: true,
+        message: result.message,
       });
     } catch (error) {
       next(error);

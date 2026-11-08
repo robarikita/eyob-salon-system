@@ -467,6 +467,7 @@ model ServiceCategory {
   slug        String    @unique
   description String?
   status      String    @default("APPROVED") // APPROVED, PENDING_APPROVAL, REJECTED
+  isActive    Boolean   @default(true)
   branchId    String?
   branch      Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
   requestedBy String?

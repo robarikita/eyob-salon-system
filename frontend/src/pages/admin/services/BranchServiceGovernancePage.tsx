@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import AdminLayout from '../../../components/admin/AdminLayout';
+import { useAuth } from '../../../context/AuthContext';
 import {
   serviceApi,
   ServiceRitual,
@@ -9,6 +10,9 @@ import {
 import { branchApi, BranchDTO } from '../../../api/branchApi';
 
 export const BranchServiceGovernancePage: React.FC = () => {
+  const { user } = useAuth();
+  const isBranchAdmin = user?.role === 'BRANCH_ADMIN';
+
   const [searchParams] = useSearchParams();
   const initialServiceId = searchParams.get('serviceId');
 
@@ -48,17 +52,20 @@ export const BranchServiceGovernancePage: React.FC = () => {
         const list = await branchApi.listBranches();
         setBranches(list);
         if (list.length > 0) {
-          const firstBranch = list[0];
-          setSelectedBranchId(firstBranch.id);
-          setBranchDepositType(firstBranch.defaultDepositType || 'PERCENTAGE');
-          setBranchDepositValue(Number(firstBranch.defaultDepositValue ?? 20));
+          const defaultBranch =
+            isBranchAdmin && user?.branchId
+              ? list.find((b) => b.id === user.branchId) || list[0]
+              : list[0];
+          setSelectedBranchId(defaultBranch.id);
+          setBranchDepositType(defaultBranch.defaultDepositType || 'PERCENTAGE');
+          setBranchDepositValue(Number(defaultBranch.defaultDepositValue ?? 20));
         }
       } catch (err: any) {
         console.error('Failed to load branches:', err);
       }
     }
     loadBranches();
-  }, []);
+  }, [isBranchAdmin, user?.branchId]);
 
   // 2. Load services for selected branch
   const fetchServices = async () => {
@@ -151,10 +158,15 @@ export const BranchServiceGovernancePage: React.FC = () => {
     setOverrideModalOpen(true);
   };
 
-  // Save Branch Price & Deposit Override
+  // Save Branch Price & Deposit Override / Submit Price Proposal
   const handleSaveOverride = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedService || !selectedBranchId) return;
+
+    if (isBranchAdmin && !reason.trim()) {
+      alert('Reason for Change is required / የለውጡ ምክንያት ያስፈልጋል');
+      return;
+    }
 
     setIsSavingOverride(true);
     try {
@@ -165,7 +177,7 @@ export const BranchServiceGovernancePage: React.FC = () => {
           ? null
           : Number(overrideDepositValue);
 
-      await serviceApi.setBranchPrice(selectedService.id, {
+      const res = await serviceApi.setBranchPrice(selectedService.id, {
         branchId: selectedBranchId,
         customPrice: Number(customPrice),
         customDurationMinutes: customDuration === '' ? null : Number(customDuration),
@@ -174,7 +186,11 @@ export const BranchServiceGovernancePage: React.FC = () => {
         reason: reason.trim() || undefined,
       });
 
-      setNotification(`Price updated for ${selectedService.name} / ዋጋ ተሻሽሏል`);
+      if ((res as any)?.pendingApproval || isBranchAdmin) {
+        setNotification('Price proposal submitted / ጥያቄው ቀርቧል');
+      } else {
+        setNotification(`Price updated for ${selectedService.name} / ዋጋ ተሻሽሏል`);
+      }
       setOverrideModalOpen(false);
       fetchServices();
       setTimeout(() => setNotification(null), 4000);
@@ -251,10 +267,14 @@ export const BranchServiceGovernancePage: React.FC = () => {
             <div className="relative">
               <select
                 value={selectedBranchId}
+                disabled={isBranchAdmin}
                 onChange={(e) => setSelectedBranchId(e.target.value)}
-                className="h-10 px-3.5 pr-8 rounded-lg bg-[#181412] text-xs font-bold text-[#D4AF37] uppercase tracking-wider border border-[#2C2724] focus:outline-none focus:border-[#D4AF37] cursor-pointer"
+                className="h-10 px-3.5 pr-8 rounded-lg bg-[#181412] text-xs font-bold text-[#D4AF37] uppercase tracking-wider border border-[#2C2724] focus:outline-none focus:border-[#D4AF37] cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed"
               >
-                {branches.map((b) => (
+                {(isBranchAdmin && user?.branchId
+                  ? branches.filter((b) => b.id === user.branchId)
+                  : branches
+                ).map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
                   </option>
@@ -581,18 +601,30 @@ export const BranchServiceGovernancePage: React.FC = () => {
                   )}
                 </div>
 
-                {/* Reason for Audit Log */}
+                {/* Reason for Audit Log / Proposal */}
                 <div>
                   <label className="block text-[11px] uppercase tracking-wider text-stone-400 font-semibold mb-1">
-                    Reason / ምክንያት (Audit Log)
+                    {isBranchAdmin ? 'Reason for Change / የለውጡ ምክንያት *' : 'Reason / ምክንያት (Audit Log)'}
                   </label>
                   <input
                     type="text"
+                    required={isBranchAdmin}
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
-                    placeholder="e.g. VIP pricing tier or festival promotion"
-                    className="w-full h-9 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] border border-[#2C2724] focus:outline-none focus:border-[#D4AF37]"
+                    placeholder={
+                      isBranchAdmin
+                        ? 'Mandatory reason for Owner approval...'
+                        : 'e.g. VIP pricing tier or festival promotion'
+                    }
+                    className={`w-full h-9 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] border focus:outline-none focus:border-[#D4AF37] ${
+                      isBranchAdmin && !reason.trim() ? 'border-amber-600/70' : 'border-[#2C2724]'
+                    }`}
                   />
+                  {isBranchAdmin && (
+                    <p className="text-[10px] text-amber-400 mt-1">
+                      Branch modifications require Owner authorization / ማሻሻያው የባለቤት ፈቃድ ያስፈልገዋል
+                    </p>
+                  )}
                 </div>
 
                 {/* Action Buttons */}
@@ -606,10 +638,14 @@ export const BranchServiceGovernancePage: React.FC = () => {
                   </button>
                   <button
                     type="submit"
-                    disabled={isSavingOverride}
+                    disabled={isSavingOverride || (isBranchAdmin && !reason.trim())}
                     className="px-4 py-2 rounded-lg bg-[#D4AF37] hover:bg-[#C59A3F] text-[#0E0B09] text-xs font-bold uppercase disabled:opacity-50"
                   >
-                    {isSavingOverride ? 'Saving...' : 'Save Override / አስቀምጥ'}
+                    {isSavingOverride
+                      ? 'Saving...'
+                      : isBranchAdmin
+                      ? 'Submit Request / ጥያቄ ላክ'
+                      : 'Save Override / አስቀምጥ'}
                   </button>
                 </div>
               </form>

@@ -560,13 +560,25 @@ export class AdminController {
       }
 
       // 3. Notify the requesting Branch Admin
+      let notifTitle = isApprove ? "Request Approved / ጸድቋል" : "Request Rejected / ውድቅ ተደርጓል";
+      let notifMessage = isApprove
+        ? `Your proposal (${govRequest.type}) for ${govRequest.branch.name} was approved by Owner.`
+        : `Your proposal (${govRequest.type}) was rejected. Note: ${reviewNote || "No note provided"}.`;
+
+      if (govRequest.type === "PRICE_UPDATE" && payload?.serviceId) {
+        const targetService = await prisma.service.findUnique({ where: { id: payload.serviceId } });
+        const serviceName = targetService?.name || "service";
+        notifTitle = isApprove ? "Price Approved / ጸድቋል" : "Price Declined / ውድቅ ተደርጓል";
+        notifMessage = isApprove
+          ? `Your price request for ${serviceName} was approved: ${reviewNote || "Approved by Owner"}`
+          : `Your price request for ${serviceName} was declined: ${reviewNote || govRequest.reason}`;
+      }
+
       await NotificationService.createNotification({
         userId: govRequest.requestedBy,
         branchId: govRequest.branchId,
-        title: isApprove ? "Request Approved / ጸድቋል" : "Request Rejected / ውድቅ ተደርጓል",
-        message: isApprove
-          ? `Your proposal (${govRequest.type}) for ${govRequest.branch.name} was approved by Owner.`
-          : `Your proposal (${govRequest.type}) was rejected. Note: ${reviewNote || "No note provided"}.`,
+        title: notifTitle,
+        message: notifMessage,
         type: "APPROVAL_NOTICE",
         link: "/admin/services",
       });

@@ -59,6 +59,13 @@ export const createCategorySchema = z.object({
   reason: z.string().optional().nullable(),
 });
 
+export const updateCategorySchema = z.object({
+  name: z.string().min(2, "Category name must be at least 2 characters").optional(),
+  nameAm: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
+  isActive: z.boolean().optional(),
+});
+
 export const reviewGovernanceSchema = z.object({
   decision: z.enum(["APPROVE", "REJECT"]).optional(),
   status: z.enum(["APPROVED", "REJECTED"]).optional(),
@@ -86,6 +93,7 @@ export type CreateServiceInput = z.infer<typeof createServiceSchema>;
 export type UpdateServiceInput = z.infer<typeof updateServiceSchema>;
 export type BranchPriceOverrideInput = z.infer<typeof branchPriceOverrideSchema>;
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
+export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
 export type ReviewGovernanceInput = z.infer<typeof reviewGovernanceSchema>;
 export type DepositRuleInput = z.infer<typeof depositRuleSchema>;
 export type UpdateBranchServiceRuleInput = z.infer<typeof updateBranchServiceRuleSchema>;

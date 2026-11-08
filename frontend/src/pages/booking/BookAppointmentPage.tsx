@@ -28,6 +28,8 @@ export const BookAppointmentPage: React.FC = () => {
   const [services, setServices] = useState<ServiceRitual[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [searchRitualQuery, setSearchRitualQuery] = useState('');
+  const [dbCategories, setDbCategories] = useState<{ id: string; name: string; nameAm?: string | null; slug: string; isActive?: boolean }[]>([]);
   const [selectedService, setSelectedService] = useState<ServiceRitual | null>(null);
   const [selectedSpecialist, setSelectedSpecialist] = useState<SpecialistOption>({
     id: 'any',
@@ -49,6 +51,22 @@ export const BookAppointmentPage: React.FC = () => {
     } catch {
       // Ignore parse failure
     }
+  }, []);
+
+  // Fetch dynamic categories on mount
+  useEffect(() => {
+    async function loadCategories() {
+      try {
+        const cats = await serviceApi.getCategories();
+        const activeApproved = (cats || []).filter(
+          (c) => c.isActive !== false && (c.status === 'APPROVED' || !c.status)
+        );
+        setDbCategories(activeApproved);
+      } catch (err) {
+        console.error('Failed to load dynamic categories:', err);
+      }
+    }
+    loadCategories();
   }, []);
 
   // 1. Fetch live branches on mount
@@ -133,18 +151,54 @@ export const BookAppointmentPage: React.FC = () => {
     fetchServices();
   }, [selectedBranch]);
 
-  // 3. Extract unique categories from live services
-  const categories = [
-    'All',
-    ...Array.from(new Set(services.map((s) => s.category).filter(Boolean))),
+  // 3. Build dynamic category pills
+  const categoryPills: { id: string; label: string }[] = [
+    { id: 'All', label: language === 'am' ? 'ሁሉም' : 'All' },
+    ...dbCategories.map((c) => ({
+      id: c.slug || c.id,
+      label: (language === 'am' && c.nameAm) ? c.nameAm : c.name,
+    })),
   ];
 
+  // Include any categories present on live services that aren't yet in dbCategories
+  const knownCatIds = new Set(categoryPills.map((p) => p.id.toLowerCase()));
+  services.forEach((s) => {
+    if (s.category && !knownCatIds.has(s.category.toLowerCase())) {
+      knownCatIds.add(s.category.toLowerCase());
+      categoryPills.push({ id: s.category, label: s.category });
+    }
+  });
+
   const filteredServices = services.filter((s) => {
-    if (selectedCategory === 'All') return true;
-    return (
-      s.category.toLowerCase().includes(selectedCategory.toLowerCase()) ||
-      selectedCategory.toLowerCase().includes(s.category.toLowerCase())
-    );
+    // Exclude services if associated category is deactivated
+    if (s.serviceCategory && s.serviceCategory.isActive === false) {
+      return false;
+    }
+
+    // Category filter
+    if (selectedCategory !== 'All') {
+      const target = selectedCategory.toLowerCase();
+      const matchesCategory =
+        s.categoryId?.toLowerCase() === target ||
+        s.category?.toLowerCase() === target ||
+        s.serviceCategory?.slug?.toLowerCase() === target ||
+        s.serviceCategory?.name?.toLowerCase() === target;
+      if (!matchesCategory) return false;
+    }
+
+    // Live search filter across name, Amharic name, description, code
+    if (searchRitualQuery.trim()) {
+      const q = searchRitualQuery.trim().toLowerCase();
+      const nameMatch = s.name?.toLowerCase().includes(q);
+      const nameAmMatch = (s.nameAm || s.amharicName)?.toLowerCase().includes(q);
+      const descMatch = (s.description || s.descriptionAm)?.toLowerCase().includes(q);
+      const codeMatch = s.code?.toLowerCase().includes(q);
+      if (!nameMatch && !nameAmMatch && !descMatch && !codeMatch) {
+        return false;
+      }
+    }
+
+    return true;
   });
 
   // Dynamic specialists derived from current service or default options
@@ -371,19 +425,42 @@ export const BookAppointmentPage: React.FC = () => {
               )}
             </div>
 
+            {/* Luxury Live Service Search Bar */}
+            <div className="relative mb-4">
+              <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 text-lg">
+                search
+              </span>
+              <input
+                type="text"
+                value={searchRitualQuery}
+                onChange={(e) => setSearchRitualQuery(e.target.value)}
+                placeholder="Search rituals... / አገልግሎት ይፈልጉ..."
+                className="w-full bg-white border border-[#E5E2DD] rounded-xl pl-11 pr-10 py-3 text-sm text-[#1C1C19] placeholder:text-stone-400 focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] shadow-sm transition"
+              />
+              {searchRitualQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchRitualQuery('')}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 p-1 text-xs"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
             {/* Category Pills */}
             <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-6 scrollbar-none">
-              {categories.map((cat) => (
+              {categoryPills.map((cat) => (
                 <button
-                  key={cat}
-                  onClick={() => setSelectedCategory(cat)}
+                  key={cat.id}
+                  onClick={() => setSelectedCategory(cat.id)}
                   className={`px-4 py-1.5 rounded text-xs whitespace-nowrap transition font-medium ${
-                    selectedCategory === cat
+                    selectedCategory === cat.id
                       ? 'bg-[#31302D] text-[#FAF7F2] shadow-sm'
                       : 'bg-[#EBE8E3] text-stone-700 hover:bg-[#DDD8D0]'
                   }`}
                 >
-                  {cat}
+                  {cat.label}
                 </button>
               ))}
             </div>

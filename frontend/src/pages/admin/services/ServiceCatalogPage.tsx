@@ -16,6 +16,8 @@ export const ServiceCatalogPage: React.FC = () => {
   const { user } = useAuth();
   const isBranchAdmin = user?.role === 'BRANCH_ADMIN';
 
+  const [activeSubTab, setActiveSubTab] = useState<'services' | 'categories'>('services');
+
   const [branches, setBranches] = useState<BranchDTO[]>([]);
   const [services, setServices] = useState<ServiceRitual[]>([]);
   const [categoriesList, setCategoriesList] = useState<ServiceCategoryItem[]>([]);
@@ -27,13 +29,28 @@ export const ServiceCatalogPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [notification, setNotification] = useState<string | null>(null);
 
-  // Category Modal State
+  // Category Modal State (Create)
   const [categoryModalOpen, setCategoryModalOpen] = useState<boolean>(false);
   const [catName, setCatName] = useState<string>('');
   const [catNameAm, setCatNameAm] = useState<string>('');
   const [catDescription, setCatDescription] = useState<string>('');
   const [catReason, setCatReason] = useState<string>('');
   const [isSavingCat, setIsSavingCat] = useState<boolean>(false);
+
+  // Category Modal State (Edit)
+  const [editingCategory, setEditingCategory] = useState<ServiceCategoryItem | null>(null);
+  const [editCatName, setEditCatName] = useState<string>('');
+  const [editCatNameAm, setEditCatNameAm] = useState<string>('');
+  const [editCatDesc, setEditCatDesc] = useState<string>('');
+  const [isSavingCatEdit, setIsSavingCatEdit] = useState<boolean>(false);
+
+  // Category Delete State
+  const [categoryToDelete, setCategoryToDelete] = useState<ServiceCategoryItem | null>(null);
+  const [isDeletingCategory, setIsDeletingCategory] = useState<boolean>(false);
+
+  // Service Delete State
+  const [serviceToDelete, setServiceToDelete] = useState<ServiceRitual | null>(null);
+  const [isDeletingService, setIsDeletingService] = useState<boolean>(false);
 
   // Service Create / Edit Modal State
   const [modalOpen, setModalOpen] = useState<boolean>(false);
@@ -104,7 +121,7 @@ export const ServiceCatalogPage: React.FC = () => {
   const handleToggleStatus = async (id: string, name: string) => {
     try {
       const result = await serviceApi.toggleServiceStatus(id);
-      const newActive = Boolean(result.service.isActive ?? result.service.status);
+      const newActive = Boolean(result.service?.isActive ?? result.service?.status);
       setServices((prev) =>
         prev.map((s) => (s.id === id ? { ...s, isActive: newActive, status: newActive } : s))
       );
@@ -112,6 +129,83 @@ export const ServiceCatalogPage: React.FC = () => {
       setTimeout(() => setNotification(null), 4000);
     } catch (err: any) {
       alert(`Toggle failed: ${err.message}`);
+    }
+  };
+
+  const handleConfirmDeleteService = async () => {
+    if (!serviceToDelete) return;
+    setIsDeletingService(true);
+    try {
+      await serviceApi.deleteService(serviceToDelete.id);
+      setNotification(`Deleted: ${serviceToDelete.name}`);
+      setServiceToDelete(null);
+      fetchServices();
+      loadCategories();
+      setTimeout(() => setNotification(null), 4000);
+    } catch (err: any) {
+      alert(`Delete failed: ${err.message}`);
+    } finally {
+      setIsDeletingService(false);
+    }
+  };
+
+  const handleToggleCategory = async (cat: ServiceCategoryItem) => {
+    try {
+      const updated = await serviceApi.toggleCategoryStatus(cat.id);
+      setCategoriesList((prev) =>
+        prev.map((c) => (c.id === cat.id ? { ...c, isActive: updated.isActive } : c))
+      );
+      setNotification(`Category status: ${cat.name}`);
+      fetchServices();
+      setTimeout(() => setNotification(null), 4000);
+    } catch (err: any) {
+      alert(`Category toggle failed: ${err.message}`);
+    }
+  };
+
+  const openEditCategory = (cat: ServiceCategoryItem) => {
+    setEditingCategory(cat);
+    setEditCatName(cat.name);
+    setEditCatNameAm(cat.nameAm || '');
+    setEditCatDesc(cat.description || '');
+  };
+
+  const handleSaveCategoryEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCategory) return;
+    setIsSavingCatEdit(true);
+    try {
+      await serviceApi.updateCategory(editingCategory.id, {
+        name: editCatName.trim(),
+        nameAm: editCatNameAm.trim() || undefined,
+        description: editCatDesc.trim() || undefined,
+      });
+      setNotification(`Category updated / ምድቡ ተሻሽሏል`);
+      setEditingCategory(null);
+      loadCategories();
+      fetchServices();
+      setTimeout(() => setNotification(null), 4000);
+    } catch (err: any) {
+      alert(`Category update failed: ${err.message}`);
+    } finally {
+      setIsSavingCatEdit(false);
+    }
+  };
+
+  const handleConfirmDeleteCategory = async () => {
+    if (!categoryToDelete) return;
+    setIsDeletingCategory(true);
+    try {
+      await serviceApi.deleteCategory(categoryToDelete.id);
+      setNotification(`Category deleted / ምድቡ ተሰርዟል`);
+      setCategoryToDelete(null);
+      loadCategories();
+      fetchServices();
+      setTimeout(() => setNotification(null), 4000);
+    } catch (err: any) {
+      alert(`Delete category failed: ${err.message}`);
+    } finally {
+      setIsDeletingCategory(false);
     }
   };
 
@@ -268,7 +362,7 @@ export const ServiceCatalogPage: React.FC = () => {
         )}
 
         {/* Minimalist Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b border-[#2C2724]">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-4 border-b border-[#2C2724]">
           <div>
             <div className="flex items-center gap-2 text-[10px] text-stone-400 uppercase tracking-widest font-semibold">
               <span>Catalog / ዝርዝር</span>
@@ -307,344 +401,641 @@ export const ServiceCatalogPage: React.FC = () => {
           </div>
         </div>
 
-        {/* KPI Strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-          <div className="bg-[#181412] p-4 rounded-xl border border-[#2C2724]">
-            <span className="text-[10px] uppercase tracking-wider text-stone-400 font-medium">Total / ጠቅላላ</span>
-            <div className="text-2xl font-serif font-bold text-[#FAF7F2] mt-1">{totalCount}</div>
-          </div>
-          <div className="bg-[#181412] p-4 rounded-xl border border-[#2C2724]">
-            <span className="text-[10px] uppercase tracking-wider text-stone-400 font-medium">Active / ንቁ</span>
-            <div className="text-2xl font-serif font-bold text-[#D4AF37] mt-1">{activeCount}</div>
-          </div>
-          <div className="bg-[#181412] p-4 rounded-xl border border-[#2C2724]">
-            <span className="text-[10px] uppercase tracking-wider text-stone-400 font-medium">Inactive / ቦዘኔ</span>
-            <div className="text-2xl font-serif font-bold text-stone-400 mt-1">{inactiveCount}</div>
-          </div>
-          <div className="bg-[#181412] p-4 rounded-xl border border-[#2C2724]">
-            <span className="text-[10px] uppercase tracking-wider text-stone-400 font-medium">Categories / ምድቦች</span>
-            <div className="text-2xl font-serif font-bold text-[#FAF7F2] mt-1">{categoriesList.length}</div>
-          </div>
-        </div>
-
-        {/* Controls Ribbon */}
-        <div className="bg-[#181412] p-3 rounded-xl border border-[#2C2724] mb-6 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-          {/* Search */}
-          <div className="relative flex-1">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-stone-500 text-[18px]">
-              search
-            </span>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search / ፈልግ..."
-              className="w-full h-10 pl-9 pr-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] placeholder-stone-500 border border-[#2C2724] focus:outline-none focus:border-[#D4AF37]"
-            />
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Branch Filter */}
-            <select
-              value={selectedBranch}
-              onChange={(e) => setSelectedBranch(e.target.value)}
-              className="h-10 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] font-semibold uppercase tracking-wider border border-[#2C2724] focus:outline-none focus:border-[#D4AF37] cursor-pointer"
-            >
-              <option value="all">All Branches / ሁሉም</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-
-            {/* Status Filter */}
-            <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-              className="h-10 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] font-semibold uppercase tracking-wider border border-[#2C2724] focus:outline-none focus:border-[#D4AF37] cursor-pointer"
-            >
-              <option value="all">All / ሁሉም</option>
-              <option value="active">Active / ንቁ</option>
-              <option value="inactive">Inactive / ቦዘኔ</option>
-            </select>
-
-            {/* View Mode Toggle */}
-            <div className="flex items-center bg-[#0E0B09] rounded-lg p-1 border border-[#2C2724]">
-              <button
-                type="button"
-                onClick={() => setViewMode('grid')}
-                className={`p-1.5 rounded transition ${
-                  viewMode === 'grid' ? 'bg-[#181412] text-[#D4AF37]' : 'text-stone-400 hover:text-white'
-                }`}
-                title="Grid View"
-              >
-                <span className="material-symbols-outlined text-[18px]">grid_view</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('table')}
-                className={`p-1.5 rounded transition ${
-                  viewMode === 'table' ? 'bg-[#181412] text-[#D4AF37]' : 'text-stone-400 hover:text-white'
-                }`}
-                title="Table View"
-              >
-                <span className="material-symbols-outlined text-[18px]">view_agenda</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Dynamic Category Filter Pills */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-6 no-scrollbar">
+        {/* Sub-Navigation Tabs */}
+        <div className="flex items-center gap-2 mb-6 border-b border-[#2C2724] pb-2">
           <button
             type="button"
-            onClick={() => setSelectedCategory('All')}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wider shrink-0 transition ${
-              selectedCategory === 'All'
-                ? 'bg-[#D4AF37] text-[#0E0B09]'
-                : 'bg-[#181412] text-stone-400 hover:text-white border border-[#2C2724]'
+            onClick={() => setActiveSubTab('services')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition flex items-center gap-2 ${
+              activeSubTab === 'services'
+                ? 'bg-[#D4AF37] text-[#0E0B09] shadow-md'
+                : 'text-stone-400 hover:text-white bg-[#181412] border border-[#2C2724]'
             }`}
           >
-            All / ሁሉም ({totalCount})
+            <span className="material-symbols-outlined text-[16px]">hotel_class</span>
+            <span>Services / አገልግሎቶች ({totalCount})</span>
           </button>
-          {categoriesList.map((cat) => {
-            const isSelected = selectedCategory === cat.name;
-            return (
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('categories')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition flex items-center gap-2 ${
+              activeSubTab === 'categories'
+                ? 'bg-[#D4AF37] text-[#0E0B09] shadow-md'
+                : 'text-stone-400 hover:text-white bg-[#181412] border border-[#2C2724]'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">category</span>
+            <span>Categories / ምድቦች ({categoriesList.length})</span>
+          </button>
+        </div>
+
+        {/* ======================= TAB 1: SERVICES ======================= */}
+        {activeSubTab === 'services' && (
+          <>
+            {/* KPI Strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+              <div className="bg-[#181412] p-4 rounded-xl border border-[#2C2724]">
+                <span className="text-[10px] uppercase tracking-wider text-stone-400 font-medium">Total / ጠቅላላ</span>
+                <div className="text-2xl font-serif font-bold text-[#FAF7F2] mt-1">{totalCount}</div>
+              </div>
+              <div className="bg-[#181412] p-4 rounded-xl border border-[#2C2724]">
+                <span className="text-[10px] uppercase tracking-wider text-stone-400 font-medium">Active / ንቁ</span>
+                <div className="text-2xl font-serif font-bold text-[#D4AF37] mt-1">{activeCount}</div>
+              </div>
+              <div className="bg-[#181412] p-4 rounded-xl border border-[#2C2724]">
+                <span className="text-[10px] uppercase tracking-wider text-stone-400 font-medium">Inactive / ቦዘኔ</span>
+                <div className="text-2xl font-serif font-bold text-stone-400 mt-1">{inactiveCount}</div>
+              </div>
+              <div className="bg-[#181412] p-4 rounded-xl border border-[#2C2724]">
+                <span className="text-[10px] uppercase tracking-wider text-stone-400 font-medium">Categories / ምድቦች</span>
+                <div className="text-2xl font-serif font-bold text-[#FAF7F2] mt-1">{categoriesList.length}</div>
+              </div>
+            </div>
+
+            {/* Controls Ribbon */}
+            <div className="bg-[#181412] p-3 rounded-xl border border-[#2C2724] mb-6 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+              {/* Search */}
+              <div className="relative flex-1">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-stone-500 text-[18px]">
+                  search
+                </span>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search / ፈልግ..."
+                  className="w-full h-10 pl-9 pr-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] placeholder-stone-500 border border-[#2C2724] focus:outline-none focus:border-[#D4AF37]"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Branch Filter */}
+                <select
+                  value={selectedBranch}
+                  onChange={(e) => setSelectedBranch(e.target.value)}
+                  className="h-10 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] font-semibold uppercase tracking-wider border border-[#2C2724] focus:outline-none focus:border-[#D4AF37] cursor-pointer"
+                >
+                  <option value="all">All Branches / ሁሉም</option>
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Status Filter */}
+                <select
+                  value={selectedStatus}
+                  onChange={(e) => setSelectedStatus(e.target.value)}
+                  className="h-10 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] font-semibold uppercase tracking-wider border border-[#2C2724] focus:outline-none focus:border-[#D4AF37] cursor-pointer"
+                >
+                  <option value="all">All / ሁሉም</option>
+                  <option value="active">Active / ንቁ</option>
+                  <option value="inactive">Inactive / ቦዘኔ</option>
+                </select>
+
+                {/* View Mode Toggle */}
+                <div className="flex items-center bg-[#0E0B09] rounded-lg p-1 border border-[#2C2724]">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('grid')}
+                    className={`p-1.5 rounded transition ${
+                      viewMode === 'grid' ? 'bg-[#181412] text-[#D4AF37]' : 'text-stone-400 hover:text-white'
+                    }`}
+                    title="Grid View"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">grid_view</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('table')}
+                    className={`p-1.5 rounded transition ${
+                      viewMode === 'table' ? 'bg-[#181412] text-[#D4AF37]' : 'text-stone-400 hover:text-white'
+                    }`}
+                    title="Table View"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">view_agenda</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Dynamic Category Filter Pills */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-6 no-scrollbar">
               <button
-                key={cat.id}
                 type="button"
-                onClick={() => setSelectedCategory(cat.name)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wider shrink-0 transition flex items-center gap-1.5 ${
-                  isSelected
+                onClick={() => setSelectedCategory('All')}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wider shrink-0 transition ${
+                  selectedCategory === 'All'
                     ? 'bg-[#D4AF37] text-[#0E0B09]'
                     : 'bg-[#181412] text-stone-400 hover:text-white border border-[#2C2724]'
                 }`}
               >
-                <span>{cat.name}</span>
-                <span className="text-[10px] opacity-80">({cat.count})</span>
-                {cat.status === 'PENDING_APPROVAL' && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                )}
+                All / ሁሉም ({totalCount})
               </button>
-            );
-          })}
-        </div>
+              {categoriesList.map((cat) => {
+                const isSelected = selectedCategory === cat.name;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setSelectedCategory(cat.name)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wider shrink-0 transition flex items-center gap-1.5 ${
+                      isSelected
+                        ? 'bg-[#D4AF37] text-[#0E0B09]'
+                        : 'bg-[#181412] text-stone-400 hover:text-white border border-[#2C2724]'
+                    }`}
+                  >
+                    <span>{cat.name}</span>
+                    <span className="text-[10px] opacity-80">({cat.count})</span>
+                    {cat.status === 'PENDING_APPROVAL' && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
 
-        {/* Loading Spinner */}
-        {loading && (
-          <div className="flex items-center justify-center py-20">
-            <div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" />
-          </div>
-        )}
+            {/* Loading Spinner */}
+            {loading && (
+              <div className="flex items-center justify-center py-20">
+                <div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" />
+              </div>
+            )}
 
-        {/* Empty State */}
-        {!loading && services.length === 0 && (
-          <div className="bg-[#181412] rounded-xl p-12 text-center border border-dashed border-[#2C2724]">
-            <span className="material-symbols-outlined text-4xl text-stone-600 mb-2">spa</span>
-            <h3 className="font-serif text-base text-[#FAF7F2] font-semibold">No services found / አገልግሎት አልተገኘም</h3>
-            <p className="text-xs text-stone-400 mt-1">Try adjusting search or filters.</p>
-          </div>
-        )}
+            {/* Empty State */}
+            {!loading && services.length === 0 && (
+              <div className="bg-[#181412] rounded-xl p-12 text-center border border-dashed border-[#2C2724]">
+                <span className="material-symbols-outlined text-4xl text-stone-600 mb-2">spa</span>
+                <h3 className="font-serif text-base text-[#FAF7F2] font-semibold">No services found / አገልግሎት አልተገኘም</h3>
+                <p className="text-xs text-stone-400 mt-1">Try adjusting search or filters.</p>
+              </div>
+            )}
 
-        {/* GRID VIEW */}
-        {!loading && viewMode === 'grid' && services.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-            {services.map((s) => {
-              const displayPrice = Number(s.effectivePrice ?? s.basePrice);
-              const isActive = s.isActive !== undefined ? s.isActive : s.status;
-              const isPending = s.approvalStatus === 'PENDING_APPROVAL';
+            {/* GRID VIEW */}
+            {!loading && viewMode === 'grid' && services.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+                {services.map((s) => {
+                  const displayPrice = Number(s.effectivePrice ?? s.basePrice);
+                  const isActive = s.isActive !== undefined ? s.isActive : s.status;
+                  const isPending = s.approvalStatus === 'PENDING_APPROVAL';
 
-              const depositLabel =
-                s.depositType === 'NONE'
-                  ? 'No Deposit / ያለ ቅድመ ክፍያ'
-                  : s.depositType === 'PERCENTAGE'
-                  ? `${s.depositValue}% Deposit`
-                  : `${s.depositValue} ETB Deposit`;
+                  const depositLabel =
+                    s.depositType === 'NONE'
+                      ? 'No Deposit / ያለ ቅድመ ክፍያ'
+                      : s.depositType === 'PERCENTAGE'
+                      ? `${s.depositValue}% Deposit`
+                      : `${s.depositValue} ETB Deposit`;
 
-              return (
-                <div
-                  key={s.id}
-                  className="bg-[#181412] rounded-xl overflow-hidden border border-[#2C2724] hover:border-[#D4AF37]/50 transition flex flex-col justify-between shadow-sm"
-                >
-                  {/* Image & Header */}
-                  <div className="relative h-44 w-full bg-[#0E0B09] overflow-hidden">
-                    <img
-                      src={
-                        s.imageUrl ||
-                        'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=800&q=80'
-                      }
-                      alt={s.name}
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#181412] via-transparent to-black/40" />
+                  return (
+                    <div
+                      key={s.id}
+                      className="bg-[#181412] rounded-xl overflow-hidden border border-[#2C2724] hover:border-[#D4AF37]/50 transition flex flex-col justify-between shadow-sm"
+                    >
+                      {/* Image & Header */}
+                      <div className="relative h-44 w-full bg-[#0E0B09] overflow-hidden">
+                        <img
+                          src={
+                            s.imageUrl ||
+                            'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=800&q=80'
+                          }
+                          alt={s.name}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-[#181412] via-transparent to-black/40" />
 
-                    {/* Top Badges */}
-                    <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 flex-wrap">
-                      <span className="px-2 py-0.5 rounded bg-black/80 text-[#D4AF37] font-mono text-[10px] font-bold">
-                        #{s.code || s.slug?.slice(0, 8)}
-                      </span>
-                      <span className="px-2 py-0.5 rounded bg-[#181412]/90 text-stone-300 text-[10px] font-semibold uppercase">
-                        {s.category.split('&')[0].trim()}
-                      </span>
-                      {isPending && (
-                        <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/40 text-[9px] font-bold uppercase tracking-wider">
-                          Pending / በመጠባበቅ ላይ
-                        </span>
-                      )}
-                    </div>
+                        {/* Top Badges */}
+                        <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 flex-wrap">
+                          <span className="px-2 py-0.5 rounded bg-black/80 text-[#D4AF37] font-mono text-[10px] font-bold">
+                            #{s.code || s.slug?.slice(0, 8)}
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-[#181412]/90 text-stone-300 text-[10px] font-semibold uppercase">
+                            {s.category.split('&')[0].trim()}
+                          </span>
+                          {isPending && (
+                            <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/40 text-[9px] font-bold uppercase tracking-wider">
+                              Pending / በመጠባበቅ ላይ
+                            </span>
+                          )}
+                        </div>
 
-                    <div className="absolute top-2.5 right-2.5">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                          isActive
-                            ? 'bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/40'
-                            : 'bg-red-950/40 text-red-400 border border-red-900/40'
-                        }`}
-                      >
-                        {isActive ? 'Active / ንቁ' : 'Inactive / ቦዘኔ'}
-                      </span>
-                    </div>
-
-                    {/* Bottom Amharic Title & Price */}
-                    <div className="absolute bottom-2 left-3 right-3 flex items-end justify-between">
-                      <div className="truncate max-w-[65%]">
-                        <span className="text-[11px] font-serif text-stone-300 truncate block">
-                          {s.nameAm || s.amharicName || '—'}
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-base font-bold text-[#D4AF37] font-serif">
-                          {displayPrice.toLocaleString()}{' '}
-                          <span className="text-[10px] text-stone-400 font-sans">ETB</span>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Body Details */}
-                  <div className="p-4 flex-1 flex flex-col justify-between">
-                    <div>
-                      <h3 className="font-serif text-base font-bold text-[#FAF7F2] leading-snug line-clamp-1">
-                        {s.name}
-                      </h3>
-
-                      <div className="flex items-center justify-between text-xs text-stone-400 mt-3 pt-2 border-t border-[#2C2724]">
-                        <span className="flex items-center gap-1">
-                          <span className="material-symbols-outlined text-[14px] text-[#D4AF37]">schedule</span>
-                          {s.durationMinutes} min / ደቂቃ
-                        </span>
-                        <span className="text-[11px] text-stone-400 font-medium">{depositLabel}</span>
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="mt-4 pt-3 border-t border-[#2C2724] flex items-center justify-between gap-2">
-                      <button
-                        type="button"
-                        onClick={() => openEditModal(s)}
-                        className="flex-1 py-1.5 px-2 rounded bg-[#2C2724] hover:bg-[#38322e] text-[#FAF7F2] text-xs font-semibold uppercase tracking-wider text-center transition"
-                      >
-                        Edit / አድስ
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleToggleStatus(s.id, s.name)}
-                        className={`py-1.5 px-3 rounded text-xs font-semibold uppercase tracking-wider transition ${
-                          isActive
-                            ? 'bg-[#2C2724] hover:bg-red-950/40 text-stone-300 hover:text-red-400'
-                            : 'bg-[#D4AF37] text-[#0E0B09]'
-                        }`}
-                        title="Toggle Status"
-                      >
-                        {isActive ? 'Deactivate' : 'Activate'}
-                      </button>
-                      <Link
-                        to={`/admin/services/pricing?serviceId=${s.id}`}
-                        className="p-1.5 rounded bg-[#2C2724] hover:bg-[#38322e] text-[#D4AF37]"
-                        title="Branch Pricing / ዋጋዎች"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">payments</span>
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* TABLE VIEW */}
-        {!loading && viewMode === 'table' && services.length > 0 && (
-          <div className="bg-[#181412] rounded-xl border border-[#2C2724] overflow-hidden mb-8">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-[#0E0B09] text-stone-400 uppercase tracking-wider font-semibold border-b border-[#2C2724]">
-                  <tr>
-                    <th className="py-3 px-4">Code / ኮድ</th>
-                    <th className="py-3 px-4">Name / ስም</th>
-                    <th className="py-3 px-4">Category / ምድብ</th>
-                    <th className="py-3 px-4">Duration / ቆይታ</th>
-                    <th className="py-3 px-4">Price / ዋጋ</th>
-                    <th className="py-3 px-4">Status / ሁኔታ</th>
-                    <th className="py-3 px-4 text-right">Actions / ተግባር</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#2C2724]">
-                  {services.map((s) => {
-                    const displayPrice = Number(s.effectivePrice ?? s.basePrice);
-                    const isActive = s.isActive !== undefined ? s.isActive : s.status;
-                    return (
-                      <tr key={s.id} className="hover:bg-[#2C2724]/40 transition">
-                        <td className="py-3 px-4 font-mono text-[#D4AF37]">{s.code || '—'}</td>
-                        <td className="py-3 px-4 font-semibold text-[#FAF7F2]">
-                          <div>{s.name}</div>
-                          {s.nameAm && <div className="text-[10px] text-stone-400">{s.nameAm}</div>}
-                        </td>
-                        <td className="py-3 px-4 text-stone-300">{s.category}</td>
-                        <td className="py-3 px-4 text-stone-300">{s.durationMinutes} min</td>
-                        <td className="py-3 px-4 font-bold text-[#D4AF37]">
-                          {displayPrice.toLocaleString()} ETB
-                        </td>
-                        <td className="py-3 px-4">
+                        <div className="absolute top-2.5 right-2.5">
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                               isActive
-                                ? 'bg-[#D4AF37]/20 text-[#D4AF37]'
-                                : 'bg-red-950/40 text-red-400'
+                                ? 'bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/40'
+                                : 'bg-red-950/40 text-red-400 border border-red-900/40'
                             }`}
                           >
                             {isActive ? 'Active / ንቁ' : 'Inactive / ቦዘኔ'}
                           </span>
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => openEditModal(s)}
-                              className="px-2 py-1 rounded bg-[#2C2724] hover:bg-[#38322e] text-[#FAF7F2]"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleToggleStatus(s.id, s.name)}
-                              className="px-2 py-1 rounded bg-[#2C2724] text-stone-300 hover:text-white"
-                            >
-                              {isActive ? 'Off' : 'On'}
-                            </button>
+                        </div>
+
+                        {/* Bottom Amharic Title & Price */}
+                        <div className="absolute bottom-2 left-3 right-3 flex items-end justify-between">
+                          <div className="truncate max-w-[65%]">
+                            <span className="text-[11px] font-serif text-stone-300 truncate block">
+                              {s.nameAm || s.amharicName || '—'}
+                            </span>
                           </div>
-                        </td>
+                          <div className="text-right">
+                            <span className="text-base font-bold text-[#D4AF37] font-serif">
+                              {displayPrice.toLocaleString()}{' '}
+                              <span className="text-[10px] text-stone-400 font-sans">ETB</span>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Body Details */}
+                      <div className="p-4 flex-1 flex flex-col justify-between">
+                        <div>
+                          <h3 className="font-serif text-base font-bold text-[#FAF7F2] leading-snug line-clamp-1">
+                            {s.name}
+                          </h3>
+
+                          <div className="flex items-center justify-between text-xs text-stone-400 mt-3 pt-2 border-t border-[#2C2724]">
+                            <span className="flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[14px] text-[#D4AF37]">schedule</span>
+                              {s.durationMinutes} min / ደቂቃ
+                            </span>
+                            <span className="text-[11px] text-stone-400 font-medium">{depositLabel}</span>
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="mt-4 pt-3 border-t border-[#2C2724] flex items-center justify-between gap-1.5 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(s)}
+                            className="flex-1 py-1.5 px-2 rounded bg-[#2C2724] hover:bg-[#38322e] text-[#FAF7F2] text-xs font-semibold uppercase tracking-wider text-center transition"
+                          >
+                            Edit / አድስ
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleStatus(s.id, s.name)}
+                            className={`py-1.5 px-2.5 rounded text-xs font-semibold uppercase tracking-wider transition ${
+                              isActive
+                                ? 'bg-[#2C2724] hover:bg-red-950/40 text-stone-300 hover:text-red-400'
+                                : 'bg-[#D4AF37] text-[#0E0B09]'
+                            }`}
+                            title="Toggle Status"
+                          >
+                            {isActive ? 'Deactivate' : 'Activate'}
+                          </button>
+                          <Link
+                            to={`/admin/services/pricing?serviceId=${s.id}`}
+                            className="p-1.5 rounded bg-[#2C2724] hover:bg-[#38322e] text-[#D4AF37]"
+                            title="Branch Pricing / ዋጋዎች"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">payments</span>
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => setServiceToDelete(s)}
+                            className="p-1.5 rounded bg-red-950/30 hover:bg-red-900/40 text-red-400 border border-red-900/40 transition"
+                            title="Delete Service / አጥፋ"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">delete</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* TABLE VIEW */}
+            {!loading && viewMode === 'table' && services.length > 0 && (
+              <div className="bg-[#181412] rounded-xl border border-[#2C2724] overflow-hidden mb-8">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#0E0B09] text-stone-400 uppercase tracking-wider font-semibold border-b border-[#2C2724]">
+                      <tr>
+                        <th className="py-3 px-4">Code / ኮድ</th>
+                        <th className="py-3 px-4">Name / ስም</th>
+                        <th className="py-3 px-4">Category / ምድብ</th>
+                        <th className="py-3 px-4">Duration / ቆይታ</th>
+                        <th className="py-3 px-4">Price / ዋጋ</th>
+                        <th className="py-3 px-4">Status / ሁኔታ</th>
+                        <th className="py-3 px-4 text-right">Actions / ተግባር</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody className="divide-y divide-[#2C2724]">
+                      {services.map((s) => {
+                        const displayPrice = Number(s.effectivePrice ?? s.basePrice);
+                        const isActive = s.isActive !== undefined ? s.isActive : s.status;
+                        return (
+                          <tr key={s.id} className="hover:bg-[#2C2724]/40 transition">
+                            <td className="py-3 px-4 font-mono text-[#D4AF37]">{s.code || '—'}</td>
+                            <td className="py-3 px-4 font-semibold text-[#FAF7F2]">
+                              <div>{s.name}</div>
+                              {s.nameAm && <div className="text-[10px] text-stone-400">{s.nameAm}</div>}
+                            </td>
+                            <td className="py-3 px-4 text-stone-300">{s.category}</td>
+                            <td className="py-3 px-4 text-stone-300">{s.durationMinutes} min</td>
+                            <td className="py-3 px-4 font-bold text-[#D4AF37]">
+                              {displayPrice.toLocaleString()} ETB
+                            </td>
+                            <td className="py-3 px-4">
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                  isActive
+                                    ? 'bg-[#D4AF37]/20 text-[#D4AF37]'
+                                    : 'bg-red-950/40 text-red-400'
+                                }`}
+                              >
+                                {isActive ? 'Active / ንቁ' : 'Inactive / ቦዘኔ'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => openEditModal(s)}
+                                  className="px-2 py-1 rounded bg-[#2C2724] hover:bg-[#38322e] text-[#FAF7F2]"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleStatus(s.id, s.name)}
+                                  className="px-2 py-1 rounded bg-[#2C2724] text-stone-300 hover:text-white"
+                                >
+                                  {isActive ? 'Off' : 'On'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setServiceToDelete(s)}
+                                  className="px-2 py-1 rounded bg-red-950/30 text-red-400 hover:bg-red-900/40"
+                                  title="Delete / አጥፋ"
+                                >
+                                  <span className="material-symbols-outlined text-[14px]">delete</span>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ======================= TAB 2: CATEGORIES ======================= */}
+        {activeSubTab === 'categories' && (
+          <div className="space-y-6">
+            <div className="bg-[#181412] rounded-xl border border-[#2C2724] overflow-hidden">
+              <div className="p-4 bg-[#0E0B09] border-b border-[#2C2724] flex items-center justify-between">
+                <div>
+                  <h3 className="font-serif text-base font-bold text-[#FAF7F2]">
+                    Category Registry / የምድብ ዝርዝር
+                  </h3>
+                  <span className="text-[10px] text-stone-400 uppercase tracking-wider">
+                    {categoriesList.length} Active Categories
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCategoryModalOpen(true)}
+                  className="px-3.5 py-1.5 rounded-lg bg-[#D4AF37] hover:bg-[#C59A3F] text-[#0E0B09] text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-md"
+                >
+                  <span className="material-symbols-outlined text-[16px]">add</span>
+                  <span>+ Category / አዲስ</span>
+                </button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-[#0E0B09] text-stone-400 uppercase tracking-wider font-semibold border-b border-[#2C2724]">
+                    <tr>
+                      <th className="py-3 px-4">Name / ስም</th>
+                      <th className="py-3 px-4">Slug / መለያ</th>
+                      <th className="py-3 px-4">Services / አገልግሎት</th>
+                      <th className="py-3 px-4">Status / ሁኔታ</th>
+                      <th className="py-3 px-4">Approval / ማረጋገጫ</th>
+                      <th className="py-3 px-4 text-right">Actions / ተግባር</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#2C2724]">
+                    {categoriesList.map((cat) => {
+                      const isCatActive = cat.isActive !== false;
+                      return (
+                        <tr key={cat.id} className="hover:bg-[#2C2724]/40 transition">
+                          <td className="py-3 px-4 font-semibold text-[#FAF7F2]">
+                            <div>{cat.name}</div>
+                            {cat.nameAm && <div className="text-[10px] text-stone-400">{cat.nameAm}</div>}
+                          </td>
+                          <td className="py-3 px-4 font-mono text-stone-400 text-[11px]">{cat.slug}</td>
+                          <td className="py-3 px-4 text-[#D4AF37] font-bold">{cat.count} Rituals</td>
+                          <td className="py-3 px-4">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                isCatActive
+                                  ? 'bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/30'
+                                  : 'bg-red-950/40 text-red-400 border border-red-900/40'
+                              }`}
+                            >
+                              {isCatActive ? 'Active / ንቁ' : 'Inactive / ዝግ'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                cat.status === 'APPROVED'
+                                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                                  : 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
+                              }`}
+                            >
+                              {cat.status === 'APPROVED' ? 'Approved / የጸደቀ' : 'Pending / በመጠባበቅ ላይ'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => openEditCategory(cat)}
+                                className="px-2.5 py-1 rounded bg-[#2C2724] hover:bg-[#38322e] text-[#FAF7F2] font-semibold"
+                              >
+                                Edit / አድስ
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleCategory(cat)}
+                                className={`px-2.5 py-1 rounded font-semibold transition ${
+                                  isCatActive
+                                    ? 'bg-[#2C2724] hover:bg-red-950/40 text-stone-300'
+                                    : 'bg-[#D4AF37] text-[#0E0B09]'
+                                }`}
+                              >
+                                {isCatActive ? 'Deactivate / አቦዝን' : 'Activate / አንቃ'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setCategoryToDelete(cat)}
+                                className="p-1 rounded bg-red-950/30 hover:bg-red-900/40 text-red-400 border border-red-900/40"
+                                title="Delete / አጥፋ"
+                              >
+                                <span className="material-symbols-outlined text-[15px]">delete</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
 
-        {/* CREATE / EDIT SERVICE MODAL */}
+        {/* ======================= CONFIRM DELETE SERVICE MODAL ======================= */}
+        {serviceToDelete && (
+          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-[#181412] w-full max-w-sm rounded-2xl border border-[#2C2724] p-6 shadow-2xl text-center">
+              <span className="material-symbols-outlined text-4xl text-red-400 mb-2 block">
+                warning
+              </span>
+              <h3 className="font-serif text-base font-bold text-[#FAF7F2] mb-1">
+                Delete Service? / አገልግሎቱን ማጥፋት?
+              </h3>
+              <p className="text-xs text-stone-400 mb-4">{serviceToDelete.name}</p>
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setServiceToDelete(null)}
+                  className="px-4 py-2 rounded-lg bg-[#2C2724] text-xs font-semibold uppercase text-stone-300"
+                >
+                  Cancel / ሰርዝ
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeletingService}
+                  onClick={handleConfirmDeleteService}
+                  className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase disabled:opacity-50"
+                >
+                  {isDeletingService ? 'Deleting...' : 'Delete / አጥፋ'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ======================= CONFIRM DELETE CATEGORY MODAL ======================= */}
+        {categoryToDelete && (
+          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-[#181412] w-full max-w-sm rounded-2xl border border-[#2C2724] p-6 shadow-2xl text-center">
+              <span className="material-symbols-outlined text-4xl text-red-400 mb-2 block">
+                warning
+              </span>
+              <h3 className="font-serif text-base font-bold text-[#FAF7F2] mb-1">
+                Delete Category? / ምድቡን ማጥፋት?
+              </h3>
+              <p className="text-xs text-stone-400 mb-4">{categoryToDelete.name}</p>
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCategoryToDelete(null)}
+                  className="px-4 py-2 rounded-lg bg-[#2C2724] text-xs font-semibold uppercase text-stone-300"
+                >
+                  Cancel / ሰርዝ
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeletingCategory}
+                  onClick={handleConfirmDeleteCategory}
+                  className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase disabled:opacity-50"
+                >
+                  {isDeletingCategory ? 'Deleting...' : 'Delete / አጥፋ'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ======================= EDIT CATEGORY MODAL ======================= */}
+        {editingCategory && (
+          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-[#181412] w-full max-w-md rounded-2xl border border-[#2C2724] p-6 shadow-2xl">
+              <div className="flex items-center justify-between pb-3 mb-4 border-b border-[#2C2724]">
+                <h2 className="text-lg font-serif font-bold text-[#FAF7F2]">
+                  Edit Category / ምድብ አድስ
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setEditingCategory(null)}
+                  className="text-stone-400 hover:text-white p-1"
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveCategoryEdit} className="space-y-4">
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wider text-stone-400 font-semibold mb-1">
+                    Name (EN) / ስም *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editCatName}
+                    onChange={(e) => setEditCatName(e.target.value)}
+                    className="w-full h-10 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] border border-[#2C2724] focus:outline-none focus:border-[#D4AF37]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wider text-stone-400 font-semibold mb-1">
+                    Name (አማ) / ስም በአማርኛ
+                  </label>
+                  <input
+                    type="text"
+                    value={editCatNameAm}
+                    onChange={(e) => setEditCatNameAm(e.target.value)}
+                    className="w-full h-10 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] border border-[#2C2724] focus:outline-none focus:border-[#D4AF37]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wider text-stone-400 font-semibold mb-1">
+                    Description / መግለጫ
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={editCatDesc}
+                    onChange={(e) => setEditCatDesc(e.target.value)}
+                    className="w-full p-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] border border-[#2C2724] focus:outline-none focus:border-[#D4AF37]"
+                  />
+                </div>
+
+                <div className="pt-3 border-t border-[#2C2724] flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingCategory(null)}
+                    className="px-4 py-2 rounded-lg bg-[#2C2724] hover:bg-[#38322e] text-xs font-semibold uppercase tracking-wider text-stone-300 transition"
+                  >
+                    Cancel / ሰርዝ
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingCatEdit}
+                    className="px-5 py-2 rounded-lg bg-[#D4AF37] hover:bg-[#C59A3F] text-[#0E0B09] text-xs font-bold uppercase tracking-wider transition disabled:opacity-50"
+                  >
+                    {isSavingCatEdit ? 'Saving...' : 'Save / አስቀምጥ'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ======================= CREATE / EDIT SERVICE MODAL ======================= */}
         {modalOpen && (
           <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
             <div className="bg-[#181412] w-full max-w-xl rounded-2xl border border-[#2C2724] p-6 shadow-2xl my-8">
@@ -889,7 +1280,7 @@ export const ServiceCatalogPage: React.FC = () => {
           </div>
         )}
 
-        {/* CREATE CATEGORY MODAL */}
+        {/* ======================= CREATE CATEGORY MODAL ======================= */}
         {categoryModalOpen && (
           <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="bg-[#181412] w-full max-w-md rounded-2xl border border-[#2C2724] p-6 shadow-2xl">

@@ -77,6 +77,7 @@ export interface ServiceRitual {
   slug?: string;
   category: string;
   categoryId?: string | null;
+  serviceCategory?: ServiceCategoryItem | null;
   approvalStatus?: 'APPROVED' | 'PENDING_APPROVAL' | 'REJECTED';
   pendingChanges?: any;
   subCategory?: string | null;
@@ -154,6 +155,7 @@ export interface ServiceCategoryItem {
   slug: string;
   description?: string | null;
   status: 'APPROVED' | 'PENDING_APPROVAL' | 'REJECTED';
+  isActive?: boolean;
   branchId?: string | null;
   count: number;
   activeCount?: number;
@@ -701,6 +703,72 @@ export const serviceApi = {
   },
 
   /**
+   * Update category
+   */
+  async updateCategory(
+    id: string,
+    payload: { name?: string; nameAm?: string; description?: string; isActive?: boolean }
+  ): Promise<ServiceCategoryItem> {
+    const res = await fetch(`${API_BASE}/services/categories/${id}`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Failed to update category (${res.status})`);
+    }
+    const json = await res.json();
+    return json.data || json;
+  },
+
+  /**
+   * Toggle category active status
+   */
+  async toggleCategoryStatus(id: string): Promise<ServiceCategoryItem> {
+    const res = await fetch(`${API_BASE}/services/categories/${id}/toggle-status`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Failed to toggle category status (${res.status})`);
+    }
+    const json = await res.json();
+    return json.data || json;
+  },
+
+  /**
+   * Delete category
+   */
+  async deleteCategory(id: string): Promise<{ success: boolean; message: string }> {
+    const res = await fetch(`${API_BASE}/services/categories/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Failed to delete category (${res.status})`);
+    }
+    return res.json();
+  },
+
+  /**
+   * Permanently delete service ritual
+   */
+  async deleteService(id: string): Promise<{ success: boolean; message: string }> {
+    const res = await fetch(`${API_BASE}/services/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Failed to delete service (${res.status})`);
+    }
+    return res.json();
+  },
+
+  /**
    * Retrieve single ritual specification dossier by ID or Code
    */
   async getServiceById(idOrCode: string, branchId?: string): Promise<ServiceRitual> {
@@ -973,7 +1041,12 @@ export const serviceApi = {
       throw new Error(errJson.message || `Status toggle failed (${res.status})`);
     }
     const json = await res.json();
-    return json.data || json;
+    const updated = json.service || json.data || json;
+    return {
+      service: updated,
+      warningCount: json.warning ? 1 : 0,
+      message: json.message || 'Status updated',
+    };
   },
 
   /**

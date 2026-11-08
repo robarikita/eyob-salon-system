@@ -33,6 +33,24 @@ router.post(
   authorize("OWNER", "BRANCH_ADMIN"),
   ServiceController.createCategory
 );
+router.patch(
+  "/categories/:id",
+  authenticate,
+  requirePermission("manage_services"),
+  ServiceController.updateCategory
+);
+router.patch(
+  "/categories/:id/toggle-status",
+  authenticate,
+  requirePermission("manage_services"),
+  ServiceController.toggleCategoryStatus
+);
+router.delete(
+  "/categories/:id",
+  authenticate,
+  requirePermission("manage_services"),
+  ServiceController.deleteCategory
+);
 router.get("/", optionalAuthenticate, ServiceController.listServices);
 router.get("/:id", optionalAuthenticate, ServiceController.getServiceById);
 
@@ -60,7 +78,7 @@ router.patch(
   ServiceController.updateService
 );
 
-// 5. Service Status Toggle (Active / Inactive)
+// 5. Service Status Toggle (Active / Inactive) & Deletion
 router.patch(
   "/:id/status",
   authenticate,
@@ -73,6 +91,13 @@ router.patch(
   authenticate,
   requirePermission("manage_services"),
   ServiceController.toggleServiceStatus
+);
+
+router.delete(
+  "/:id",
+  authenticate,
+  requirePermission("manage_services"),
+  ServiceController.deleteService
 );
 
 // 6. Branch Pricing & Historical Price Audits
