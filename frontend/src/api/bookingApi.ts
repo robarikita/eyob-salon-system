@@ -75,13 +75,54 @@ export interface AvailabilityResponse {
   serviceDuration: number;
   turnaroundBuffer: number;
   availableSlots: string[];
+  slots?: Array<{
+    time: string;
+    startTime: string;
+    endTime: string;
+    availableEmployeeIds: string[];
+  }>;
+}
+
+export interface ChainStepDTO {
+  serviceId: string;
+  serviceName: string;
+  serviceNameAm?: string | null;
+  startTime: string;
+  endTime: string;
+  startTimeISO: string;
+  endTimeISO: string;
+  durationMinutes: number;
+  employeeId: string;
+  employeeName: string;
+}
+
+export interface MultiServiceChainOptionDTO {
+  chainStartTime: string;
+  chainEndTime: string;
+  chainStartTimeISO: string;
+  chainEndTimeISO: string;
+  totalDurationMinutes: number;
+  steps: ChainStepDTO[];
+}
+
+export interface MultiServiceAvailabilityResponse {
+  date: string;
+  branchId: string;
+  totalDurationMinutes: number;
+  chainOptions: MultiServiceChainOptionDTO[];
 }
 
 export interface CreateBookingPayload {
   branchId: string;
-  serviceId: string;
-  employeeId: string;
-  startTime: string;
+  serviceId?: string;
+  employeeId?: string;
+  startTime?: string;
+  items?: Array<{
+    serviceId: string;
+    employeeId: string;
+    startTime: string;
+    sequenceOrder?: number;
+  }>;
   notes?: string;
 }
 
@@ -113,6 +154,30 @@ export const bookingApi = {
       console.error('Error fetching availability:', err);
       throw err;
     }
+  },
+
+  /**
+   * Get multi-service sequential chain availability
+   */
+  async getMultiServiceAvailability(params: {
+    branchId: string;
+    date: string;
+    services: Array<{ serviceId: string; preferredEmployeeId?: string | null }>;
+    requireSameSpecialist?: boolean;
+    bufferMinutes?: number;
+    timeZone?: string;
+  }): Promise<MultiServiceAvailabilityResponse> {
+    const res = await fetch(`${API_BASE}/bookings/availability/multi-service`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) {
+      const errorJson = await res.json().catch(() => null);
+      throw new Error(errorJson?.message || `Multi-service query failed (HTTP ${res.status})`);
+    }
+    const json = await res.json();
+    return json.data;
   },
 
   /**

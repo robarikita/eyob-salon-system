@@ -3,6 +3,7 @@ import { BookingService } from "./booking.service";
 import {
   availabilityQuerySchema,
   createBookingSchema,
+  multiServiceAvailabilitySchema,
   cancelBookingSchema,
   rescheduleBookingSchema,
   updateAppointmentStatusSchema,
@@ -19,10 +20,34 @@ export class BookingController {
         serviceId: req.query.serviceId,
         employeeId: req.query.employeeId || undefined,
         date: req.query.date,
+        timeZone: req.query.timeZone,
       });
 
       const slots = await BookingService.getAvailableSlots(query);
       res.status(200).json({ status: "success", data: slots });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getMultiServiceAvailability(req: Request, res: Response, next: NextFunction) {
+    try {
+      const payload =
+        req.method === "POST"
+          ? req.body
+          : {
+              branchId: req.query.branchId,
+              date: req.query.date,
+              services:
+                typeof req.query.serviceIds === "string"
+                  ? req.query.serviceIds.split(",").map((s: string) => ({ serviceId: s.trim() }))
+                  : [],
+              requireSameSpecialist: req.query.requireSameSpecialist === "true",
+              timeZone: req.query.timeZone,
+            };
+      const input = multiServiceAvailabilitySchema.parse(payload);
+      const result = await BookingService.getMultiServiceSlots(input);
+      res.status(200).json({ status: "success", data: result });
     } catch (error) {
       next(error);
     }

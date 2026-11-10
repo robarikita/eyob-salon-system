@@ -13,6 +13,8 @@ export const BookingReviewPage: React.FC = () => {
   // Load session storage data
   const branchData = sessionStorage.getItem('booking_branch');
   const serviceData = sessionStorage.getItem('booking_service');
+  const servicesData = sessionStorage.getItem('booking_services');
+  const chainOptionData = sessionStorage.getItem('booking_chain_option');
   const specialistData = sessionStorage.getItem('booking_specialist');
   const dateData = sessionStorage.getItem('booking_date');
   const slotData = sessionStorage.getItem('booking_slot') || '10:30';
@@ -23,6 +25,12 @@ export const BookingReviewPage: React.FC = () => {
   const service = serviceData
     ? JSON.parse(serviceData)
     : { id: '7a7c5f64-7ef4-4549-baec-b4d217788eb9', name: 'Bridal Hair & Haute Couture Updo', amharicName: 'የሙሽራ የፀጉር አሰራር', effectivePrice: 1200, effectiveDuration: 90, depositAmount: 300 };
+  const selectedServices: any[] = servicesData
+    ? JSON.parse(servicesData)
+    : (serviceData ? [JSON.parse(serviceData)] : [service]);
+  const chainOption = chainOptionData ? JSON.parse(chainOptionData) : null;
+  const isMultiService = selectedServices.length > 1;
+
   const specialist = specialistData
     ? JSON.parse(specialistData)
     : { id: 'any', name: 'Any Available Specialist / ማንኛውም ዝግጁ ባለሙያ', role: 'Artisan Cosmetologist', initials: 'ANY' };
@@ -57,6 +65,8 @@ export const BookingReviewPage: React.FC = () => {
       const pendingBooking = {
         branch,
         service,
+        services: selectedServices,
+        chainOption,
         specialist,
         selectedDate,
         slot: slotData,
@@ -65,6 +75,10 @@ export const BookingReviewPage: React.FC = () => {
       sessionStorage.setItem('pending_booking', JSON.stringify(pendingBooking));
       sessionStorage.setItem('booking_branch', JSON.stringify(branch));
       sessionStorage.setItem('booking_service', JSON.stringify(service));
+      sessionStorage.setItem('booking_services', JSON.stringify(selectedServices));
+      if (chainOption) {
+        sessionStorage.setItem('booking_chain_option', JSON.stringify(chainOption));
+      }
       sessionStorage.setItem('booking_specialist', JSON.stringify(specialist));
       sessionStorage.setItem('booking_date', JSON.stringify(selectedDate));
       sessionStorage.setItem('booking_slot', slotData);
@@ -81,18 +95,52 @@ export const BookingReviewPage: React.FC = () => {
       const [year, month, day] = selectedDate.dateStr.split('-').map(Number);
       const startIso = new Date(Date.UTC(year, month - 1, day, h, m, 0)).toISOString();
 
-      const booking = await bookingApi.createBooking({
+      let bookingPayload: any = {
         branchId: branch.id,
-        serviceId: service.id,
-        employeeId: specialist.id !== 'any' ? specialist.id : undefined,
-        startTime: startIso,
         notes: notes.trim() || undefined,
-      });
+      };
+
+      if (chainOption && chainOption.steps && chainOption.steps.length > 0) {
+        bookingPayload.items = chainOption.steps.map((st: any, idx: number) => ({
+          serviceId: st.serviceId,
+          employeeId: st.employeeId || (specialist.id !== 'any' ? specialist.id : undefined),
+          startTime: st.startTimeISO,
+          sequenceOrder: idx,
+        }));
+        bookingPayload.serviceId = selectedServices[0]?.id || service.id;
+        bookingPayload.startTime = chainOption.chainStartTimeISO;
+      } else if (isMultiService) {
+        let currentAddisMinutes = h * 60 + m;
+        const items = selectedServices.map((srv: any, idx: number) => {
+          const duration = srv.effectiveDuration || srv.durationMinutes || 60;
+          const stepStartUtcEpoch = Date.UTC(year, month - 1, day, Math.floor(currentAddisMinutes / 60) - 3, currentAddisMinutes % 60, 0, 0);
+          const stepIso = new Date(stepStartUtcEpoch).toISOString();
+          currentAddisMinutes += duration;
+          return {
+            serviceId: srv.id,
+            employeeId: specialist.id !== 'any' ? specialist.id : undefined,
+            startTime: stepIso,
+            sequenceOrder: idx,
+          };
+        });
+        bookingPayload.items = items;
+        bookingPayload.serviceId = selectedServices[0]?.id || service.id;
+        bookingPayload.employeeId = specialist.id !== 'any' ? specialist.id : undefined;
+        bookingPayload.startTime = items[0]?.startTime || startIso;
+      } else {
+        bookingPayload.serviceId = service.id;
+        bookingPayload.employeeId = specialist.id !== 'any' ? specialist.id : undefined;
+        bookingPayload.startTime = startIso;
+      }
+
+      const booking = await bookingApi.createBooking(bookingPayload);
 
       // Clear pending draft upon successful booking creation
       sessionStorage.removeItem('pending_booking');
       sessionStorage.removeItem('booking_branch');
       sessionStorage.removeItem('booking_service');
+      sessionStorage.removeItem('booking_services');
+      sessionStorage.removeItem('booking_chain_option');
       sessionStorage.removeItem('booking_specialist');
       sessionStorage.removeItem('booking_date');
       sessionStorage.removeItem('booking_slot');
@@ -106,10 +154,19 @@ export const BookingReviewPage: React.FC = () => {
     }
   };
 
-  const totalTariff = service.effectivePrice || service.basePrice || 0;
-  const depositRequired = service.effectiveDeposit !== undefined && service.effectiveDeposit !== null
-    ? service.effectiveDeposit
-    : (service.depositAmount ?? 0);
+  const totalTariff = isMultiService
+    ? selectedServices.reduce((acc, s) => acc + (s.effectivePrice !== undefined ? Number(s.effectivePrice) : Number(s.basePrice || 0)), 0)
+    : (service.effectivePrice || service.basePrice || 0);
+
+  const depositRequired = isMultiService
+    ? selectedServices.reduce((acc, s) => {
+        const dep = s.effectiveDeposit !== undefined && s.effectiveDeposit !== null ? s.effectiveDeposit : (s.depositAmount || 0);
+        return acc + Number(dep);
+      }, 0)
+    : (service.effectiveDeposit !== undefined && service.effectiveDeposit !== null
+        ? service.effectiveDeposit
+        : (service.depositAmount ?? 0));
+
   const balanceDue = Math.max(0, totalTariff - depositRequired);
 
   const customerDisplayName = user?.firstName
@@ -241,24 +298,79 @@ export const BookingReviewPage: React.FC = () => {
                 <span className="material-symbols-outlined text-xs">edit</span> {t('branch.edit')}
               </button>
             </div>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h3 className="font-serif text-xl font-bold text-[#1C1C19]">{service.name}</h3>
-                {service.amharicName && <p className="text-xs font-serif text-stone-500">{service.amharicName}</p>}
-                <p className="text-xs text-stone-600 mt-1">
-                  Duration: {service.effectiveDuration || service.durationMinutes || 60} Minutes Active Session
-                </p>
-              </div>
-              <div className="flex items-center gap-3 bg-[#FAF7F2] p-3 rounded-xl border border-[#E5E2DD]">
-                <div className="w-10 h-10 rounded-full bg-[#181412] text-[#D4AF37] flex items-center justify-center font-bold text-xs border border-[#D4AF37]/40">
-                  {specialist.initials || 'SP'}
+
+            {chainOption && chainOption.steps && chainOption.steps.length > 0 ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-stone-700">
+                    Sequenced Rituals ({chainOption.steps.length}) / ተከታታይ አገልግሎቶች
+                  </span>
+                  <span className="text-xs font-bold text-[#D4AF37] font-mono">
+                    Total: {chainOption.totalDurationMinutes} min
+                  </span>
                 </div>
+                <div className="space-y-2">
+                  {chainOption.steps.map((st: any, idx: number) => (
+                    <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-[#FAF7F2] border border-[#E5E2DD]">
+                      <div className="flex items-center gap-3">
+                        <span className="w-6 h-6 rounded-full bg-[#181412] text-[#D4AF37] flex items-center justify-center text-[10px] font-bold">
+                          {idx + 1}
+                        </span>
+                        <div>
+                          <h4 className="font-bold text-xs text-[#1C1C19]">{st.serviceName}</h4>
+                          <p className="text-[11px] text-stone-500">
+                            Specialist: {st.employeeName} • {st.durationMinutes} min
+                          </p>
+                        </div>
+                      </div>
+                      <span className="font-mono font-bold text-[#775A00] bg-white px-2 py-1 rounded border border-[#E5E2DD] text-xs">
+                        {st.startTime} – {st.endTime}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : isMultiService ? (
+              <div className="space-y-3">
+                <span className="text-xs font-bold text-stone-700 block">
+                  Selected Rituals ({selectedServices.length}) / አገልግሎቶች
+                </span>
+                <div className="space-y-2">
+                  {selectedServices.map((srv: any, idx: number) => (
+                    <div key={srv.id} className="flex items-center justify-between p-2.5 rounded-lg bg-[#FAF7F2] border border-[#E5E2DD] text-xs">
+                      <div>
+                        <span className="font-bold text-[#1C1C19]">{idx + 1}. {srv.name}</span>
+                        <p className="text-stone-500 text-[11px]">
+                          {srv.effectiveDuration || srv.durationMinutes || 60} min • {Number(srv.effectivePrice || srv.basePrice).toLocaleString()} ETB
+                        </p>
+                      </div>
+                      <span className="text-xs font-bold text-[#775A00]">
+                        {specialist.name.split('/')[0].trim()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h4 className="text-xs font-bold text-[#1C1C19]">{specialist.name}</h4>
-                  <p className="text-[11px] text-[#775A00]">{specialist.role}</p>
+                  <h3 className="font-serif text-xl font-bold text-[#1C1C19]">{service.name}</h3>
+                  {service.amharicName && <p className="text-xs font-serif text-stone-500">{service.amharicName}</p>}
+                  <p className="text-xs text-stone-600 mt-1">
+                    Duration: {service.effectiveDuration || service.durationMinutes || 60} Minutes Active Session
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 bg-[#FAF7F2] p-3 rounded-xl border border-[#E5E2DD]">
+                  <div className="w-10 h-10 rounded-full bg-[#181412] text-[#D4AF37] flex items-center justify-center font-bold text-xs border border-[#D4AF37]/40">
+                    {specialist.initials || 'SP'}
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-[#1C1C19]">{specialist.name}</h4>
+                    <p className="text-[11px] text-[#775A00]">{specialist.role}</p>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Dossier 3: Appointment Itinerary */}
@@ -283,7 +395,7 @@ export const BookingReviewPage: React.FC = () => {
                 <span className="text-stone-400 block mb-0.5">Session Window</span>
                 <p className="font-bold text-sm text-[#775A00] flex items-center gap-1">
                   <span className="material-symbols-outlined text-xs">alarm</span>
-                  {slotData} (EAT)
+                  {chainOption ? `${chainOption.chainStartTime} – ${chainOption.chainEndTime} (EAT)` : `${slotData} (EAT)`}
                 </p>
                 <p className="text-[11px] text-stone-500">Arrival 10 mins prior recommended</p>
               </div>

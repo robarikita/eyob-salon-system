@@ -397,6 +397,7 @@ model BookingItem {
   
   startTime             DateTime
   endTime               DateTime
+  sequenceOrder         Int      @default(0)
 
   // Relations
   bookingId             String
@@ -410,6 +411,9 @@ model BookingItem {
 
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+
+  @@index([employeeId, startTime, endTime])
+  @@index([bookingId])
 }
 
 model Payment {

@@ -27,7 +27,7 @@ export const BookAppointmentPage: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchRitualQuery, setSearchRitualQuery] = useState('');
   const [dbCategories, setDbCategories] = useState<{ id: string; name: string; nameAm?: string | null; slug: string; isActive?: boolean; status?: string }[]>([]);
-  const [selectedService, setSelectedService] = useState<ServiceRitual | null>(null);
+  const [selectedServices, setSelectedServices] = useState<ServiceRitual[]>([]);
   const [viewingRatesServiceId, setViewingRatesServiceId] = useState<string | null>(null);
 
   const [branchEmployees, setBranchEmployees] = useState<Employee[]>([]);
@@ -135,20 +135,37 @@ export const BookAppointmentPage: React.FC = () => {
         setServices(list);
 
         // Pre-select saved or first service
-        const savedServiceRaw = sessionStorage.getItem('booking_service');
-        let matchedService: ServiceRitual | undefined;
-        if (savedServiceRaw) {
+        const savedServicesRaw = sessionStorage.getItem('booking_services');
+        let matchedServices: ServiceRitual[] = [];
+        if (savedServicesRaw) {
           try {
-            const saved = JSON.parse(savedServiceRaw);
-            matchedService = list.find((s) => s.id === saved.id);
+            const parsed = JSON.parse(savedServicesRaw);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              matchedServices = list.filter((s) => parsed.some((p: any) => p.id === s.id));
+            }
           } catch {
             // Ignore
           }
         }
-        if (!matchedService && list.length > 0) {
-          matchedService = list[0];
+
+        if (matchedServices.length === 0) {
+          const savedServiceRaw = sessionStorage.getItem('booking_service');
+          if (savedServiceRaw) {
+            try {
+              const saved = JSON.parse(savedServiceRaw);
+              const found = list.find((s) => s.id === saved.id);
+              if (found) matchedServices = [found];
+            } catch {
+              // Ignore
+            }
+          }
         }
-        setSelectedService(matchedService || null);
+
+        if (matchedServices.length === 0 && list.length > 0) {
+          matchedServices = [list[0]];
+        }
+
+        setSelectedServices(matchedServices);
       } catch (err) {
         console.error('Error fetching services:', err);
       } finally {
@@ -179,9 +196,9 @@ export const BookAppointmentPage: React.FC = () => {
 
   // Dynamic specialist list with zero mock bios and zero fake stars
   const qualifiedEmployees = branchEmployees.filter((emp) => {
-    if (!selectedService) return true;
+    if (selectedServices.length === 0) return true;
     if (!emp.services || emp.services.length === 0) return true;
-    return emp.services.some((s) => s.serviceId === selectedService.id);
+    return selectedServices.some((srv) => emp.services?.some((s) => s.serviceId === srv.id));
   });
 
   const specialistOptions: SpecialistOption[] = [
@@ -200,6 +217,40 @@ export const BookAppointmentPage: React.FC = () => {
       };
     }),
   ];
+
+  const toggleServiceSelection = (srv: ServiceRitual) => {
+    setSelectedServices((prev) => {
+      const exists = prev.some((s) => s.id === srv.id);
+      let next: ServiceRitual[];
+      if (exists) {
+        if (prev.length === 1) {
+          next = [];
+        } else {
+          next = prev.filter((s) => s.id !== srv.id);
+        }
+      } else {
+        next = [...prev, srv];
+      }
+      return next;
+    });
+  };
+
+  const totalDuration = selectedServices.reduce((acc, s) => {
+    const d = s.effectiveDuration !== undefined ? s.effectiveDuration : (s.durationMinutes || 60);
+    return acc + d;
+  }, 0);
+
+  const totalPrice = selectedServices.reduce((acc, s) => {
+    const p = s.effectivePrice !== undefined ? Number(s.effectivePrice) : Number(s.basePrice || 0);
+    return acc + p;
+  }, 0);
+
+  const totalDeposit = selectedServices.reduce((acc, s) => {
+    const dep = s.effectiveDeposit !== undefined && s.effectiveDeposit !== null
+      ? Number(s.effectiveDeposit)
+      : Number(s.depositAmount || 0);
+    return acc + dep;
+  }, 0);
 
   // Reset specialist if current specialist is not in qualified branch specialists
   useEffect(() => {
@@ -249,9 +300,10 @@ export const BookAppointmentPage: React.FC = () => {
   });
 
   const handleContinue = () => {
-    if (!selectedService || !selectedBranch) return;
+    if (selectedServices.length === 0 || !selectedBranch) return;
     sessionStorage.setItem('booking_branch', JSON.stringify(selectedBranch));
-    sessionStorage.setItem('booking_service', JSON.stringify(selectedService));
+    sessionStorage.setItem('booking_services', JSON.stringify(selectedServices));
+    sessionStorage.setItem('booking_service', JSON.stringify(selectedServices[0]));
     sessionStorage.setItem('booking_specialist', JSON.stringify(selectedSpecialist));
     navigate('/book/datetime');
   };
@@ -448,7 +500,7 @@ export const BookAppointmentPage: React.FC = () => {
             </div>
 
             {/* Clean Category Tabs */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-6 scrollbar-none">
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-4 scrollbar-none">
               {categoryPills.map((cat) => (
                 <button
                   key={cat.id}
@@ -464,6 +516,41 @@ export const BookAppointmentPage: React.FC = () => {
               ))}
             </div>
 
+            {/* Multi-Service Selection Luxury Counter Pill */}
+            {selectedServices.length > 0 && (
+              <div className="mb-6 p-3.5 rounded-xl bg-[#181412] text-[#FAF7F2] border border-[#D4AF37]/50 flex flex-wrap items-center justify-between gap-3 shadow-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-[#D4AF37] text-[#0E0B09] flex items-center justify-center font-bold text-xs">
+                    {selectedServices.length}
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-[#D4AF37] uppercase tracking-wider block">
+                      Selected: {selectedServices.length} {selectedServices.length === 1 ? 'Service' : 'Services'} / {selectedServices.length} አገልግሎቶች
+                    </span>
+                    <span className="text-[11px] text-stone-300">
+                      Total: {totalDuration} min / ደቂቃ • {totalPrice.toLocaleString()} ETB
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-[#D4AF37] font-semibold hidden sm:inline">
+                    Multi-Service Sequencing / ተከታታይ ቀጠሮ
+                  </span>
+                  {selectedServices.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedServices([selectedServices[0]]);
+                      }}
+                      className="text-[10px] text-stone-400 hover:text-white px-2 py-1 rounded border border-[#2C2724] cursor-pointer"
+                    >
+                      Reset / አጽዳ
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Live Service Cards Grid */}
             {loading ? (
               <div className="py-16 text-center text-stone-500 flex flex-col items-center gap-3">
@@ -477,7 +564,7 @@ export const BookAppointmentPage: React.FC = () => {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {filteredServices.map((srv) => {
-                  const isSelected = selectedService?.id === srv.id;
+                  const isSelected = selectedServices.some((s) => s.id === srv.id);
                   const price = srv.effectivePrice !== undefined ? srv.effectivePrice : srv.basePrice;
                   const duration = srv.effectiveDuration !== undefined ? srv.effectiveDuration : srv.durationMinutes;
                   const isUnavailableAtBranch = srv.available === false || srv.isAvailable === false || srv.isAvailableAtSelectedBranch === false;
@@ -489,7 +576,7 @@ export const BookAppointmentPage: React.FC = () => {
                   return (
                     <article
                       key={srv.id}
-                      onClick={() => setSelectedService(srv)}
+                      onClick={() => toggleServiceSelection(srv)}
                       className={`cursor-pointer rounded-xl p-4 border transition-all duration-300 relative flex flex-col justify-between shadow-md ${
                         isSelected
                           ? 'border-[#D4AF37] ring-1 ring-[#D4AF37] bg-[#181412]'
@@ -556,7 +643,7 @@ export const BookAppointmentPage: React.FC = () => {
                                         const matched = branches.find((b) => b.id === alt.branchId || b.slug === alt.branchSlug);
                                         if (matched) {
                                           setSelectedBranch(matched);
-                                          setSelectedService(srv);
+                                          setSelectedServices([srv]);
                                         }
                                       }}
                                       className="px-2 py-0.5 rounded bg-[#D4AF37] text-[#0E0B09] font-bold text-[10px] hover:bg-[#C59A3F] transition cursor-pointer"
@@ -642,13 +729,17 @@ export const BookAppointmentPage: React.FC = () => {
                         {/* Action Select Button */}
                         <button
                           type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleServiceSelection(srv);
+                          }}
                           className={`w-full py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition ${
                             isSelected
                               ? 'bg-[#D4AF37] text-[#0E0B09]'
                               : 'bg-[#2C2724] text-stone-300 hover:bg-[#D4AF37] hover:text-[#0E0B09]'
                           }`}
                         >
-                          {isSelected ? 'Selected / ተመርጧል ✓' : 'Select / ምረጥ'}
+                          {isSelected ? 'Selected / ተመርጧል ✓' : 'Add / ምረጥ +'}
                         </button>
                       </div>
                     </article>
@@ -752,21 +843,39 @@ export const BookAppointmentPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Ritual */}
-              <div className="flex items-center justify-between pb-2 border-b border-[#2C2724]/60">
-                <span className="text-stone-400">Ritual / አገልግሎት</span>
-                <span className="font-semibold text-[#FAF7F2] text-right truncate max-w-[60%]">
-                  {selectedService ? selectedService.name : '—'}
-                </span>
+              {/* Rituals List */}
+              <div className="pb-2 border-b border-[#2C2724]/60 space-y-1.5">
+                <div className="flex items-center justify-between text-stone-400">
+                  <span>Ritual / አገልግሎት</span>
+                  <span className="text-[#D4AF37] font-semibold">{selectedServices.length} Selected</span>
+                </div>
+                {selectedServices.map((srv, idx) => (
+                  <div key={srv.id} className="flex items-center justify-between text-[11px] bg-[#0E0B09] p-2 rounded border border-[#2C2724]">
+                    <div className="min-w-0 flex-1 mr-2">
+                      <span className="font-bold text-[#FAF7F2] truncate block">
+                        {idx + 1}. {srv.name}
+                      </span>
+                      <span className="text-stone-400 text-[10px]">
+                        {srv.effectiveDuration || srv.durationMinutes || 60} min • {Number(srv.effectivePrice || srv.basePrice).toLocaleString()} ETB
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => toggleServiceSelection(srv)}
+                      className="text-stone-400 hover:text-red-400 text-xs px-1 cursor-pointer"
+                      title="Remove / አስወግድ"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
               </div>
 
               {/* Duration */}
               <div className="flex items-center justify-between pb-2 border-b border-[#2C2724]/60">
                 <span className="text-stone-400">Duration / ሰዓት</span>
                 <span className="font-semibold text-[#FAF7F2]">
-                  {selectedService
-                    ? `${selectedService.effectiveDuration || selectedService.durationMinutes} min`
-                    : '—'}
+                  {totalDuration} min / ደቂቃ
                 </span>
               </div>
 
@@ -782,9 +891,7 @@ export const BookAppointmentPage: React.FC = () => {
               <div className="flex items-center justify-between pb-2 border-b border-[#2C2724]/60">
                 <span className="text-stone-400">Total / ጠቅላላ</span>
                 <span className="font-bold text-[#D4AF37] text-sm font-serif">
-                  {selectedService
-                    ? `${Number(selectedService.effectivePrice || selectedService.basePrice).toLocaleString()} ETB`
-                    : '0 ETB'}
+                  {totalPrice.toLocaleString()} ETB
                 </span>
               </div>
 
@@ -792,25 +899,23 @@ export const BookAppointmentPage: React.FC = () => {
               <div className="flex items-center justify-between">
                 <span className="text-stone-400">Deposit / ቅድመ ክፍያ</span>
                 <span className="font-semibold text-[#FAF7F2]">
-                  {selectedService
-                    ? `${Number(selectedService.effectiveDeposit !== undefined && selectedService.effectiveDeposit !== null ? selectedService.effectiveDeposit : (selectedService.depositAmount || 0)).toLocaleString()} ETB`
-                    : '0 ETB'}
+                  {totalDeposit.toLocaleString()} ETB
                 </span>
               </div>
             </div>
 
             {/* Branch Inactivity Warning & Alternate Suggestions in Summary */}
-            {selectedService && (selectedService.available === false || selectedService.isAvailableAtSelectedBranch === false) && (
+            {selectedServices.some((s) => s.available === false || s.isAvailableAtSelectedBranch === false) && (
               <div className="mb-4 p-3 rounded-lg bg-amber-950/60 border border-amber-600/60 text-xs text-[#FAF7F2]">
                 <div className="flex items-center gap-1.5 font-bold text-amber-400 mb-1">
                   <span className="material-symbols-outlined text-sm">warning</span>
                   <span>Unavailable / በዚህ ቅርንጫፍ የለም</span>
                 </div>
-                {selectedService.alternateBranches && selectedService.alternateBranches.length > 0 ? (
+                {selectedServices.find((s) => s.alternateBranches && s.alternateBranches.length > 0)?.alternateBranches ? (
                   <div>
                     <span className="text-[10px] text-stone-300 block mb-1.5">Alternate Branch / ሌላ ቅርንጫፍ:</span>
                     <div className="flex flex-wrap gap-1.5">
-                      {selectedService.alternateBranches.map((alt) => (
+                      {selectedServices.find((s) => s.alternateBranches && s.alternateBranches.length > 0)?.alternateBranches?.map((alt) => (
                         <button
                           key={alt.branchId}
                           type="button"
@@ -835,11 +940,10 @@ export const BookAppointmentPage: React.FC = () => {
             <button
               onClick={handleContinue}
               disabled={
-                !selectedService ||
+                selectedServices.length === 0 ||
                 !selectedBranch ||
                 selectedBranch.isActive === false ||
-                selectedService.available === false ||
-                selectedService.isAvailableAtSelectedBranch === false
+                selectedServices.some((s) => s.available === false || s.isAvailableAtSelectedBranch === false)
               }
               className="w-full py-3.5 rounded bg-[#D4AF37] hover:bg-[#C59A3F] text-[#0E0B09] font-bold text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 cursor-pointer"
             >

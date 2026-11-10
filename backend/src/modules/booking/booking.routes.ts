@@ -8,6 +8,8 @@ export const customerBookingRouter = Router();
 
 // Availability query is public
 customerBookingRouter.get("/availability", BookingController.getAvailableSlots);
+customerBookingRouter.post("/availability/multi-service", BookingController.getMultiServiceAvailability);
+customerBookingRouter.get("/availability/multi-service", BookingController.getMultiServiceAvailability);
 
 // Authenticated customer booking actions
 customerBookingRouter.post(

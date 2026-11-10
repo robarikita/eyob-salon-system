@@ -100,6 +100,12 @@ async function runEpic4Audit() {
         include: { branchHours: true },
       });
       cleanupBranchIds.push(branchA.id);
+    } else if (!branchA.isActive) {
+      branchA = await prisma.branch.update({
+        where: { id: branchA.id },
+        data: { isActive: true },
+        include: { branchHours: true },
+      });
     }
 
     // Ensure Branch A has operating hours
@@ -130,6 +136,12 @@ async function runEpic4Audit() {
         include: { branchHours: true },
       });
       cleanupBranchIds.push(branchB.id);
+    } else if (!branchB.isActive) {
+      branchB = await prisma.branch.update({
+        where: { id: branchB.id },
+        data: { isActive: true },
+        include: { branchHours: true },
+      });
     }
 
     if (!branchB.branchHours || branchB.branchHours.length === 0) {

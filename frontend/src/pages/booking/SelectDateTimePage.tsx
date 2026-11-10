@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { bookingApi } from '../../api/bookingApi';
+import { bookingApi, MultiServiceChainOptionDTO } from '../../api/bookingApi';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { LanguageToggle } from '../../components/common/LanguageToggle';
@@ -13,6 +13,7 @@ export const SelectDateTimePage: React.FC = () => {
   // Retrieve previous wizard choices from sessionStorage
   const branchData = sessionStorage.getItem('booking_branch');
   const serviceData = sessionStorage.getItem('booking_service');
+  const servicesData = sessionStorage.getItem('booking_services');
   const specialistData = sessionStorage.getItem('booking_specialist');
 
   const branch = branchData
@@ -21,11 +22,16 @@ export const SelectDateTimePage: React.FC = () => {
   const service = serviceData
     ? JSON.parse(serviceData)
     : { id: 'SR-101', name: 'Bridal Hair & Haute Couture Updo', effectivePrice: 1200, effectiveDuration: 90, depositAmount: 300 };
+  const selectedServices: any[] = servicesData
+    ? JSON.parse(servicesData)
+    : (serviceData ? [JSON.parse(serviceData)] : [service]);
+  const isMultiService = selectedServices.length > 1;
+
   const specialist = specialistData
     ? JSON.parse(specialistData)
     : { id: 'any', name: 'Any Available Specialist / ማንኛውም ዝግጁ ባለሙያ', role: 'Artisan Cosmetologist' };
 
-  // Generate the next 14 calendar dates
+  // Generate the next 14 calendar dates starting TODAY (dates[0])
   const dates = Array.from({ length: 14 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() + i);
@@ -50,40 +56,91 @@ export const SelectDateTimePage: React.FC = () => {
     };
   });
 
-  const [selectedDate, setSelectedDate] = useState(dates[1]); // Tomorrow by default
+  const [selectedDate, setSelectedDate] = useState(dates[0]); // Today by default (enables same-day booking)
   const [slots, setSlots] = useState<string[]>([]);
-  const [selectedSlot, setSelectedSlot] = useState<string>('10:30');
+  const [chainOptions, setChainOptions] = useState<MultiServiceChainOptionDTO[]>([]);
+  const [selectedSlot, setSelectedSlot] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     async function loadSlots() {
       try {
         setLoading(true);
-        const res = await bookingApi.getAvailableSlots({
-          branchId: branch.id,
-          serviceId: service.id,
-          employeeId: specialist.id !== 'any' ? specialist.id : undefined,
-          date: selectedDate.dateStr,
-        });
-        const available = res?.availableSlots || [];
-        setSlots(available);
-        if (available.length > 0 && !available.includes(selectedSlot)) {
-          setSelectedSlot(available[0]);
+        if (isMultiService) {
+          const res = await bookingApi.getMultiServiceAvailability({
+            branchId: branch.id,
+            date: selectedDate.dateStr,
+            services: selectedServices.map((s: any) => ({
+              serviceId: s.id,
+              preferredEmployeeId: specialist.id !== 'any' ? specialist.id : null,
+            })),
+            requireSameSpecialist: specialist.id !== 'any',
+            bufferMinutes: 15,
+          });
+          const chains = res?.chainOptions || [];
+          setChainOptions(chains);
+          const available = chains.map((c) => c.chainStartTime);
+          setSlots(available);
+          if (available.length > 0) {
+            setSelectedSlot((prev) => (available.includes(prev) ? prev : available[0]));
+          } else {
+            setSelectedSlot('');
+          }
+        } else {
+          const res = await bookingApi.getAvailableSlots({
+            branchId: branch.id,
+            serviceId: service.id,
+            employeeId: specialist.id !== 'any' ? specialist.id : undefined,
+            date: selectedDate.dateStr,
+          });
+          const available = res?.availableSlots || [];
+          setSlots(available);
+          setChainOptions([]);
+          if (available.length > 0) {
+            setSelectedSlot((prev) => (available.includes(prev) ? prev : available[0]));
+          } else {
+            setSelectedSlot('');
+          }
         }
       } catch (err) {
         console.error('Error loading slots:', err);
-        // Fallback default daytime windows if endpoint is empty
-        setSlots(['09:30', '10:30', '11:30', '14:00', '15:30', '17:00']);
+        setSlots([]);
+        setChainOptions([]);
+        setSelectedSlot('');
       } finally {
         setLoading(false);
       }
     }
     loadSlots();
-  }, [selectedDate, branch.id, service.id, specialist.id]);
+  }, [selectedDate, branch.id, service.id, specialist.id, isMultiService]);
+
+  const matchingChain = chainOptions.find((c) => c.chainStartTime === selectedSlot);
+
+  const totalDuration = isMultiService
+    ? selectedServices.reduce((acc, s) => acc + (s.effectiveDuration || s.durationMinutes || 60), 0)
+    : (service.effectiveDuration || service.durationMinutes || 60);
+
+  const totalPrice = isMultiService
+    ? selectedServices.reduce((acc, s) => acc + (s.effectivePrice !== undefined ? Number(s.effectivePrice) : Number(s.basePrice || 0)), 0)
+    : (service.effectivePrice || service.basePrice || 0);
+
+  const totalDeposit = isMultiService
+    ? selectedServices.reduce((acc, s) => {
+        const dep = s.effectiveDeposit !== undefined && s.effectiveDeposit !== null ? s.effectiveDeposit : (s.depositAmount || 0);
+        return acc + Number(dep);
+      }, 0)
+    : (service.effectiveDeposit ?? service.depositAmount ?? 0);
+
+  const balanceDue = Math.max(0, totalPrice - totalDeposit);
 
   const handleContinue = () => {
     sessionStorage.setItem('booking_date', JSON.stringify(selectedDate));
     sessionStorage.setItem('booking_slot', selectedSlot);
+    if (matchingChain) {
+      sessionStorage.setItem('booking_chain_option', JSON.stringify(matchingChain));
+    } else {
+      sessionStorage.removeItem('booking_chain_option');
+    }
     navigate('/book/review');
   };
 
@@ -238,18 +295,20 @@ export const SelectDateTimePage: React.FC = () => {
             {loading ? (
               <div className="py-12 text-center text-stone-500 flex flex-col items-center gap-3">
                 <div className="w-7 h-7 border-2 border-[#D4AF37] border-t-transparent rounded-full animate-spin" />
-                <span className="text-xs tracking-wider uppercase">Loading available slots...</span>
+                <span className="text-xs tracking-wider uppercase">Loading / በመጫን ላይ...</span>
               </div>
             ) : slots.length === 0 ? (
               <div className="p-8 text-center bg-white rounded-xl border border-[#E5E2DD] text-stone-500 text-sm">
-                No slots open for this date. Please select another date above.
+                <span className="material-symbols-outlined text-3xl text-stone-400 mb-2 block">event_busy</span>
+                <p className="font-bold text-[#1C1C19]">No Available Slots / ክፍት ሰዓት የለም</p>
+                <p className="text-xs text-stone-500 mt-1">Please select another date above / እባክዎ ሌላ ቀን ይምረጡ</p>
               </div>
             ) : (
               <div className="space-y-6">
                 {morningSlots.length > 0 && (
                   <div>
                     <span className="text-[11px] uppercase tracking-wider text-stone-400 font-bold block mb-2">
-                      Morning (Before 12:00 PM)
+                      Morning (Before 12:00 PM) / ጥዋት
                     </span>
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
                       {morningSlots.map((slot) => {
@@ -277,7 +336,7 @@ export const SelectDateTimePage: React.FC = () => {
                 {afternoonSlots.length > 0 && (
                   <div>
                     <span className="text-[11px] uppercase tracking-wider text-stone-400 font-bold block mb-2">
-                      Afternoon (12:00 PM – 4:00 PM)
+                      Afternoon (12:00 PM – 4:00 PM) / ከሰዓት
                     </span>
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
                       {afternoonSlots.map((slot) => {
@@ -305,7 +364,7 @@ export const SelectDateTimePage: React.FC = () => {
                 {eveningSlots.length > 0 && (
                   <div>
                     <span className="text-[11px] uppercase tracking-wider text-stone-400 font-bold block mb-2">
-                      Evening (After 4:00 PM)
+                      Evening (After 4:00 PM) / ማታ
                     </span>
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
                       {eveningSlots.map((slot) => {
@@ -329,6 +388,42 @@ export const SelectDateTimePage: React.FC = () => {
                     </div>
                   </div>
                 )}
+
+                {/* Multi-Service Step Roadmap Timeline */}
+                {matchingChain && matchingChain.steps && matchingChain.steps.length > 1 && (
+                  <div className="mt-8 p-5 rounded-xl bg-white border border-[#E5E2DD] shadow-sm">
+                    <div className="flex items-center justify-between pb-2 mb-3 border-b border-[#F0EDE9]">
+                      <span className="text-[10px] uppercase tracking-wider text-[#775A00] font-bold">
+                        Consecutive Schedule / ተከታታይ ሰዓታት ({matchingChain.totalDurationMinutes} min)
+                      </span>
+                      <span className="text-xs font-bold text-[#D4AF37] font-mono">
+                        {matchingChain.chainStartTime} – {matchingChain.chainEndTime}
+                      </span>
+                    </div>
+                    <div className="space-y-2.5">
+                      {matchingChain.steps.map((st, idx) => (
+                        <div key={idx} className="flex items-center justify-between text-xs p-3 rounded-lg bg-[#FAF7F2] border border-[#E5E2DD]">
+                          <div className="flex items-center gap-3">
+                            <span className="w-6 h-6 rounded-full bg-[#181412] text-[#D4AF37] flex items-center justify-center text-[11px] font-bold">
+                              {idx + 1}
+                            </span>
+                            <div>
+                              <span className="font-bold text-[#1C1C19] block text-sm">
+                                {st.serviceNameAm ? `${st.serviceName} / ${st.serviceNameAm}` : st.serviceName}
+                              </span>
+                              <span className="text-stone-500 text-[11px]">
+                                Specialist: {st.employeeName} • {st.durationMinutes} min
+                              </span>
+                            </div>
+                          </div>
+                          <span className="font-mono font-bold text-[#775A00] bg-white px-2.5 py-1 rounded border border-[#E5E2DD] text-xs">
+                            {st.startTime} – {st.endTime}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -347,8 +442,22 @@ export const SelectDateTimePage: React.FC = () => {
             <div className="space-y-4 text-xs mb-6">
               <div>
                 <span className="text-stone-400 block mb-0.5">{t('book.selectRitual')}</span>
-                <p className="font-serif font-bold text-sm text-[#FAF7F2]">{service.name}</p>
-                <p className="text-stone-400">{service.effectiveDuration || service.durationMinutes || 60} Minutes Session</p>
+                {isMultiService ? (
+                  <div className="space-y-1 mt-1">
+                    {selectedServices.map((s: any, idx: number) => (
+                      <div key={s.id} className="flex items-center justify-between text-[11px] bg-[#0E0B09] p-2 rounded border border-[#2C2724]">
+                        <span className="font-bold text-[#FAF7F2] truncate mr-2">{idx + 1}. {s.name}</span>
+                        <span className="text-[#D4AF37] font-mono">{s.effectiveDuration || s.durationMinutes || 60}m</span>
+                      </div>
+                    ))}
+                    <p className="text-stone-400 text-[11px] mt-1">Total: {totalDuration} min / ደቂቃ</p>
+                  </div>
+                ) : (
+                  <>
+                    <p className="font-serif font-bold text-sm text-[#FAF7F2]">{service.name}</p>
+                    <p className="text-stone-400">{totalDuration} Minutes Session</p>
+                  </>
+                )}
               </div>
 
               <div>
@@ -365,7 +474,7 @@ export const SelectDateTimePage: React.FC = () => {
                 <span className="text-stone-400 block mb-0.5">Selected Time Slot</span>
                 <p className="font-bold text-lg text-[#FAF7F2] flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-sm text-[#D4AF37]">alarm</span>
-                  {selectedSlot} (EAT)
+                  {selectedSlot ? (matchingChain ? `${matchingChain.chainStartTime} – ${matchingChain.chainEndTime}` : `${selectedSlot} (EAT)`) : '—'}
                 </p>
               </div>
             </div>
@@ -374,19 +483,13 @@ export const SelectDateTimePage: React.FC = () => {
               <div className="flex items-center justify-between text-stone-400">
                 <span>{t('book.deposit')}</span>
                 <span className="text-[#D4AF37] font-bold">
-                  {Number(service.effectiveDeposit ?? service.depositAmount ?? 0).toLocaleString()} ETB
+                  {totalDeposit.toLocaleString()} ETB
                 </span>
               </div>
               <div className="flex items-center justify-between text-stone-400">
                 <span>{t('book.balanceDue')}</span>
                 <span>
-                  {Number(
-                    Math.max(
-                      0,
-                      (service.effectivePrice || service.basePrice || 0) -
-                        (service.effectiveDeposit ?? service.depositAmount ?? 0)
-                    )
-                  ).toLocaleString()} ETB
+                  {balanceDue.toLocaleString()} ETB
                 </span>
               </div>
             </div>

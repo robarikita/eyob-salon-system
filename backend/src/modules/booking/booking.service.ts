@@ -5,9 +5,14 @@ import {
   ForbiddenError,
   ConflictError,
 } from "../../errors/AppError";
-import { BookingStatus, UserRole, BranchHours } from "@prisma/client";
+import { BookingStatus, UserRole } from "@prisma/client";
 import { ServiceRitualService } from "../service/service.service";
 import { EmployeeService } from "../employee/employee.service";
+import { AvailabilityService } from "./availability.service";
+import {
+  MultiServiceSchedulingService,
+  MultiServiceChainParams,
+} from "./multiServiceScheduling.service";
 import {
   AvailabilityQuery,
   CreateBookingInput,
@@ -38,238 +43,27 @@ export class BookingService {
    * Calculate conflict-free available time slots for a branch, service, and date
    */
   static async getAvailableSlots(query: AvailabilityQuery) {
-    const { branchId, serviceId, employeeId, date } = query;
-
-    // 1. Fetch branch operating hours
-    const branch = await prisma.branch.findUnique({
-      where: { id: branchId },
-      include: { branchHours: true },
+    return await AvailabilityService.calculateServiceSlots({
+      branchId: query.branchId,
+      serviceId: query.serviceId,
+      employeeId: query.employeeId || undefined,
+      date: query.date,
+      timeZone: query.timeZone,
     });
+  }
 
-    if (!branch || !branch.isActive) {
-      throw new NotFoundError("Branch not found or inactive.");
-    }
-
-    const [year, month, day] = date.split("-").map(Number);
-    const targetDate = new Date(year, month - 1, day);
-    const dayOfWeek = targetDate.getDay();
-
-    const branchHour = branch.branchHours.find((bh: BranchHours) => bh.dayOfWeek === dayOfWeek);
-    if (!branchHour || branchHour.isClosed) {
-      return {
-        date,
-        branchId,
-        serviceDuration: 0,
-        turnaroundBuffer: 0,
-        availableSlots: [],
-      };
-    }
-
-    // 2. Fetch service details & buffers
-    const dummyUser: CurrentUser = { id: "system", role: "CUSTOMER", branchId: null };
-    const service = await ServiceRitualService.getServiceById(serviceId, dummyUser, branchId);
-    if (!service.isActive) {
-      throw new ValidationError("Service ritual is inactive and cannot be booked.");
-    }
-
-    const duration = service.effectiveDuration || 60;
-    const turnaround = service.effectiveTurnaround || 15;
-    const totalSlotBlock = duration + turnaround;
-    const slotStepMinutes = branch.slotBufferMinutes || 15;
-
-    // Parse branch open & close times into minutes from midnight
-    const [openH, openM] = branchHour.openTime.split(":").map(Number);
-    const [closeH, closeM] = branchHour.closeTime.split(":").map(Number);
-    const branchOpenMinutes = openH * 60 + openM;
-    let branchCloseMinutes = closeH * 60 + closeM;
-    if (branchHour.closesNextDay || branchCloseMinutes <= branchOpenMinutes) {
-      branchCloseMinutes += 24 * 60;
-    }
-
-    // 3. Determine target specialists
-    let targetEmployeeIds: string[] = [];
-    if (employeeId) {
-      const emp = await prisma.employee.findUnique({
-        where: { id: employeeId },
-        include: {
-          services: {
-            where: { serviceId: service.id, isQualified: true },
-          },
-        },
-      });
-      if (!emp || emp.branchId !== branchId || !emp.status || !emp.isActive) {
-        throw new NotFoundError("Specialist not found or inactive at this branch.");
-      }
-      // If specialist has configured services, check qualification
-      if (emp.services.length === 0) {
-        const totalAssigned = await prisma.employeeService.count({
-          where: { employeeId: emp.id },
-        });
-        if (totalAssigned > 0) {
-          return {
-            date,
-            branchId,
-            serviceDuration: duration,
-            turnaroundBuffer: turnaround,
-            availableSlots: [],
-          };
-        }
-      }
-      targetEmployeeIds = [employeeId];
-    } else {
-      // Find all active specialists assigned to this service at this branch
-      const serviceEmployees = await prisma.employeeService.findMany({
-        where: {
-          serviceId: service.id,
-          isQualified: true,
-          employee: {
-            branchId,
-            status: true,
-            isActive: true,
-          },
-        },
-        select: { employeeId: true },
-      });
-
-      targetEmployeeIds = serviceEmployees.map((se: { employeeId: string }) => se.employeeId);
-
-      // Fallback: If no direct service assignment, query any active specialist at this branch
-      if (targetEmployeeIds.length === 0) {
-        const branchEmployees = await prisma.employee.findMany({
-          where: { branchId, status: true, isActive: true },
-          select: { id: true },
-        });
-        targetEmployeeIds = branchEmployees.map((e: { id: string }) => e.id);
-      }
-    }
-
-    if (targetEmployeeIds.length === 0) {
-      return {
-        date,
-        branchId,
-        serviceDuration: duration,
-        turnaroundBuffer: turnaround,
-        availableSlots: [],
-      };
-    }
-
-    // 4. Compute slots for each specialist and merge
-    const startOfDay = new Date(year, month - 1, day, 0, 0, 0, 0);
-    const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
-
-    const slotSet = new Set<string>();
-
-    for (const empId of targetEmployeeIds) {
-      // Check effective working hours for specialist on this date
-      const effectiveSchedule = await EmployeeService.getEffectiveScheduleForDate(
-        empId,
-        targetDate
-      );
-
-      if (!effectiveSchedule.isWorking || !effectiveSchedule.startTime || !effectiveSchedule.endTime) {
-        continue;
-      }
-
-      const [shiftStartH, shiftStartM] = effectiveSchedule.startTime.split(":").map(Number);
-      const [shiftEndH, shiftEndM] = effectiveSchedule.endTime.split(":").map(Number);
-      const shiftStartMinutes = shiftStartH * 60 + shiftStartM;
-      let shiftEndMinutes = shiftEndH * 60 + shiftEndM;
-      if (branchHour.closesNextDay && shiftEndMinutes <= shiftStartMinutes) {
-        shiftEndMinutes += 24 * 60;
-      }
-
-      let breakStartMinutes: number | null = null;
-      let breakEndMinutes: number | null = null;
-      if (effectiveSchedule.breakStartTime && effectiveSchedule.breakEndTime) {
-        const [bsh, bsm] = effectiveSchedule.breakStartTime.split(":").map(Number);
-        const [beh, bem] = effectiveSchedule.breakEndTime.split(":").map(Number);
-        breakStartMinutes = bsh * 60 + bsm;
-        breakEndMinutes = beh * 60 + bem;
-      }
-
-      // Bound shift by branch hours
-      const effectiveStart = Math.max(branchOpenMinutes, shiftStartMinutes);
-      const effectiveEnd = Math.min(branchCloseMinutes, shiftEndMinutes);
-
-      // Fetch existing bookings for this employee on this date
-      const existingBookings = await prisma.bookingItem.findMany({
-        where: {
-          employeeId: empId,
-          startTime: { gte: startOfDay, lte: endOfDay },
-          booking: {
-            status: { in: [BookingStatus.CONFIRMED, BookingStatus.IN_PROGRESS, BookingStatus.PENDING_PAYMENT] },
-            OR: [
-              { status: { in: [BookingStatus.CONFIRMED, BookingStatus.IN_PROGRESS] } },
-              { status: BookingStatus.PENDING_PAYMENT, reservationExpires: { gt: new Date() } },
-            ],
-          },
-        },
-        select: {
-          startTime: true,
-          endTime: true,
-          durationSnapshot: true,
-        },
-      });
-
-      // Convert existing bookings to minutes from midnight
-      const bookedRanges = existingBookings.map((b: { startTime: Date; endTime: Date }) => {
-        const bStart = new Date(b.startTime);
-        const bEnd = new Date(b.endTime);
-        const startMin = bStart.getHours() * 60 + bStart.getMinutes();
-        const endMin = bEnd.getHours() * 60 + bEnd.getMinutes();
-        return {
-          start: startMin,
-          end: endMin + turnaround, // include turnaround buffer
-        };
-      });
-
-      // Evaluate candidate slot starts
-      for (let cur = effectiveStart; cur + duration <= effectiveEnd; cur += slotStepMinutes) {
-        const curEnd = cur + duration;
-        const curEndWithBuffer = cur + totalSlotBlock;
-
-        // Check break overlap
-        if (breakStartMinutes !== null && breakEndMinutes !== null) {
-          if (cur < breakEndMinutes && curEnd > breakStartMinutes) {
-            continue;
-          }
-        }
-
-        // Check collision with existing booked items
-        const hasCollision = bookedRanges.some((range: { start: number; end: number }) => {
-          return cur < range.end && curEndWithBuffer > range.start;
-        });
-
-        if (!hasCollision) {
-          const hh = String(Math.floor(cur / 60)).padStart(2, "0");
-          const mm = String(cur % 60).padStart(2, "0");
-          slotSet.add(`${hh}:${mm}`);
-        }
-      }
-    }
-
-    const availableSlots = Array.from(slotSet).sort();
-
-    return {
-      date,
-      branchId,
-      serviceDuration: duration,
-      turnaroundBuffer: turnaround,
-      availableSlots,
-    };
+  /**
+   * Calculate sequential multi-service chain slots
+   */
+  static async getMultiServiceSlots(params: MultiServiceChainParams) {
+    return await MultiServiceSchedulingService.calculateMultiServiceChainSlots(params);
   }
 
   /**
    * Create an appointment with concurrency advisory locking and snapshot freezing
    */
   static async createBooking(input: CreateBookingInput, currentUser: CurrentUser) {
-    const { branchId, serviceId, employeeId, startTime: startTimeStr, notes } = input;
-    const startTime = new Date(startTimeStr);
-
-    if (isNaN(startTime.getTime())) {
-      throw new ValidationError("Invalid start time format.");
-    }
-
+    const { branchId, notes } = input;
     const customerId = currentUser.id;
 
     // 1. Fetch branch
@@ -281,73 +75,148 @@ export class BookingService {
       throw new NotFoundError("Branch not found or inactive.");
     }
 
-    // 2. Fetch service details & snapshots
-    const service = await ServiceRitualService.getServiceById(serviceId, currentUser, branchId);
-    if (!service.isActive) {
-      throw new ValidationError("Service ritual is inactive.");
+    // 2. Normalize requested items (multi-service items or single legacy item)
+    const rawItems: Array<{
+      serviceId: string;
+      employeeId: string;
+      startTime: Date;
+      sequenceOrder: number;
+    }> = [];
+
+    if (input.items && input.items.length > 0) {
+      input.items.forEach((item, idx) => {
+        const start = new Date(item.startTime);
+        if (isNaN(start.getTime())) throw new ValidationError("Invalid start time format.");
+        rawItems.push({
+          serviceId: item.serviceId,
+          employeeId: item.employeeId,
+          startTime: start,
+          sequenceOrder: item.sequenceOrder !== undefined ? item.sequenceOrder : idx,
+        });
+      });
+    } else if (input.serviceId && input.employeeId && input.startTime) {
+      const start = new Date(input.startTime);
+      if (isNaN(start.getTime())) throw new ValidationError("Invalid start time format.");
+      rawItems.push({
+        serviceId: input.serviceId,
+        employeeId: input.employeeId,
+        startTime: start,
+        sequenceOrder: 0,
+      });
+    } else {
+      throw new ValidationError("Booking items or service details are required.");
     }
 
-    const price = service.effectivePrice;
-    const duration = service.effectiveDuration || 60;
-    const turnaround = service.effectiveTurnaround || 15;
+    // Resolve details & snapshots for all items
+    const preparedItems: Array<{
+      service: any;
+      employeeId: string;
+      startTime: Date;
+      endTime: Date;
+      endTimeWithBuffer: Date;
+      price: number;
+      duration: number;
+      turnaround: number;
+      depositRequired: number;
+      sequenceOrder: number;
+    }> = [];
+    let aggregateTotal = 0;
+    let aggregateDeposit = 0;
 
-    // Dynamically resolve deposit via 3-tier priority hierarchy
-    const depositCalc = await ServiceRitualService.getDepositCalculation(serviceId, branchId, price);
-    const depositRequired = depositCalc.depositAmount;
-    const totalAmount = price;
+    for (const item of rawItems) {
+      const service = await ServiceRitualService.getServiceById(item.serviceId, currentUser, branchId);
+      if (!service.isActive) {
+        throw new ValidationError(`Service '${service.name}' is inactive.`);
+      }
+
+      const price = Number(service.effectivePrice);
+      const duration = service.effectiveDuration || 60;
+      const turnaround = service.effectiveTurnaround || 15;
+
+      const depositCalc = await ServiceRitualService.getDepositCalculation(item.serviceId, branchId, price);
+      const depositRequired = Number(depositCalc.depositAmount);
+
+      aggregateTotal += price;
+      aggregateDeposit += depositRequired;
+
+      const endTime = new Date(item.startTime.getTime() + duration * 60000);
+      const endTimeWithBuffer = new Date(endTime.getTime() + turnaround * 60000);
+
+      preparedItems.push({
+        service,
+        employeeId: item.employeeId,
+        startTime: item.startTime,
+        endTime,
+        endTimeWithBuffer,
+        price,
+        duration,
+        turnaround,
+        depositRequired,
+        sequenceOrder: item.sequenceOrder,
+      });
+    }
+
+    const totalAmount = aggregateTotal;
+    const depositRequired = aggregateDeposit;
     const depositPaid = depositRequired;
     const balanceDue = Math.max(0, totalAmount - depositPaid);
 
-    const endTime = new Date(startTime.getTime() + duration * 60000);
-    const endTimeWithBuffer = new Date(endTime.getTime() + turnaround * 60000);
-
-    // 3. Concurrency Lock: Use PostgreSQL advisory lock on hash(employeeId + date)
-    const dateStr = startTime.toISOString().split("T")[0];
-    const lockStr = `bk_${employeeId}_${dateStr}`;
-    let hash = 0;
-    for (let i = 0; i < lockStr.length; i++) {
-      hash = ((hash << 5) - hash) + lockStr.charCodeAt(i);
-      hash |= 0;
+    // 3. Concurrency Lock: Lock each distinct (employeeId, dateStr)
+    const lockKeys = new Set<string>();
+    for (const item of preparedItems) {
+      const dStr = item.startTime.toISOString().split("T")[0];
+      lockKeys.add(`bk_${item.employeeId}_${dStr}`);
     }
 
-    return await prisma.$transaction(async (tx: any) => {
-      // Acquire transaction-level advisory lock
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${hash})`;
+    const dateStr = preparedItems[0].startTime.toISOString().split("T")[0];
 
-      // Verify specialist schedule for this date
-      const schedule = await EmployeeService.getEffectiveScheduleForDate(employeeId, startTime);
-      if (!schedule.isWorking || !schedule.startTime || !schedule.endTime) {
-        throw new ConflictError("Specialist is not scheduled to work at this date/time.");
+    return await prisma.$transaction(async (tx: any) => {
+      // Acquire transaction-level advisory locks for all distinct specialist+day combinations
+      for (const lockStr of lockKeys) {
+        let hash = 0;
+        for (let i = 0; i < lockStr.length; i++) {
+          hash = ((hash << 5) - hash) + lockStr.charCodeAt(i);
+          hash |= 0;
+        }
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${hash})`;
       }
 
-      // Check collision with unexpired / confirmed bookings
-      const conflictingBooking = await tx.bookingItem.findFirst({
-        where: {
-          employeeId,
-          booking: {
-            status: { in: [BookingStatus.CONFIRMED, BookingStatus.IN_PROGRESS, BookingStatus.PENDING_PAYMENT] },
+      // Check collision and working schedule for every item
+      for (const item of preparedItems) {
+        const schedule = await EmployeeService.getEffectiveScheduleForDate(item.employeeId, item.startTime);
+        if (!schedule.isWorking || !schedule.startTime || !schedule.endTime) {
+          throw new ConflictError("Specialist is not scheduled to work at this date/time.");
+        }
+
+        const conflictingBooking = await tx.bookingItem.findFirst({
+          where: {
+            employeeId: item.employeeId,
+            booking: {
+              status: { in: [BookingStatus.CONFIRMED, BookingStatus.IN_PROGRESS, BookingStatus.PENDING_PAYMENT] },
+              OR: [
+                { status: { in: [BookingStatus.CONFIRMED, BookingStatus.IN_PROGRESS] } },
+                { status: BookingStatus.PENDING_PAYMENT, reservationExpires: { gt: new Date() } },
+              ],
+            },
             OR: [
-              { status: { in: [BookingStatus.CONFIRMED, BookingStatus.IN_PROGRESS] } },
-              { status: BookingStatus.PENDING_PAYMENT, reservationExpires: { gt: new Date() } },
+              { AND: [{ startTime: { lte: item.startTime } }, { endTime: { gt: item.startTime } }] },
+              { AND: [{ startTime: { lt: item.endTimeWithBuffer } }, { endTime: { gte: item.endTimeWithBuffer } }] },
+              { AND: [{ startTime: { gte: item.startTime } }, { endTime: { lte: item.endTimeWithBuffer } }] },
             ],
           },
-          AND: [
-            { startTime: { lt: endTimeWithBuffer } },
-            { endTime: { gt: startTime } },
-          ],
-        },
-      });
+        });
 
-      if (conflictingBooking) {
-        throw new ConflictError("The selected time slot has just been reserved by another client. Please select an adjacent time.");
+        if (conflictingBooking) {
+          throw new ConflictError("Time slot collision / ይህ ሰዓት ተይዟል");
+        }
       }
 
-      // Generate canonical bookingNumber: EYOB-YYYYMMDD-XXXX
+      // Canonical booking number
       const datePrefix = `EYOB-${dateStr.replace(/-/g, "")}`;
       const randomSuffix = Math.floor(1000 + Math.random() * 9000);
       const bookingNumber = `${datePrefix}-${randomSuffix}`;
 
-      // Create Booking
+      // Create Booking with all items
       const booking = await tx.booking.create({
         data: {
           bookingNumber,
@@ -360,25 +229,28 @@ export class BookingService {
           notes,
           customerId,
           branchId,
+          employeeId: preparedItems[0]?.employeeId,
           items: {
-            create: {
-              serviceId: service.id,
-              serviceTitleSnapshot: service.name,
-              priceSnapshot: price,
-              durationSnapshot: duration,
-              depositSnapshot: depositRequired,
-              snapshotServiceName: service.name,
-              snapshotPrice: price,
-              snapshotDurationMinutes: duration,
-              snapshotDepositAmount: depositRequired,
-              startTime,
-              endTime,
-              employeeId,
-            },
+            create: preparedItems.map((item) => ({
+              serviceId: item.service.id,
+              serviceTitleSnapshot: item.service.name,
+              priceSnapshot: item.price,
+              durationSnapshot: item.duration,
+              depositSnapshot: item.depositRequired,
+              snapshotServiceName: item.service.name,
+              snapshotPrice: item.price,
+              snapshotDurationMinutes: item.duration,
+              snapshotDepositAmount: item.depositRequired,
+              startTime: item.startTime,
+              endTime: item.endTime,
+              employeeId: item.employeeId,
+              sequenceOrder: item.sequenceOrder,
+            })),
           },
         },
         include: {
           items: {
+            orderBy: { sequenceOrder: "asc" },
             include: {
               employee: {
                 select: { id: true, firstName: true, lastName: true, ritualTitle: true, workstation: true },
