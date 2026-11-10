@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { LanguageToggle } from '../common/LanguageToggle';
 import { serviceApi, NotificationItem } from '../../api/serviceApi';
+import { branchApi, BranchDTO } from '../../api/branchApi';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -24,6 +25,13 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   const [currentBranch, setCurrentBranch] = useState(selectedBranch);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [assignedBranchName, setAssignedBranchName] = useState<string>('');
+  const [liveBranches, setLiveBranches] = useState<BranchDTO[]>([]);
+
+  useEffect(() => {
+    branchApi.listBranches().then((list) => {
+      setLiveBranches(list);
+    }).catch(() => {});
+  }, []);
 
   const isServicesSectionActive = currentPath.startsWith('/admin/services');
   const isEmployeeSectionActive =
@@ -390,11 +398,16 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
               <span className="material-symbols-outlined text-[20px]">menu</span>
             </button>
 
-            {/* Branch Selector (Locked Badge for Branch Admin; Switcher for Owner) */}
+            {/* Branch Selector (Locked Badge for Branch Admin; Switcher for Owner if >1 branch) */}
             {user?.role === 'BRANCH_ADMIN' ? (
               <div className="flex items-center gap-2 bg-surface-container-low border border-primary/20 rounded-xl px-3.5 py-1.5 shadow-sm text-xs font-semibold text-primary">
                 <span className="material-symbols-outlined text-[17px]">location_on</span>
                 <span>{assignedBranchName || 'Assigned Branch'}</span>
+              </div>
+            ) : liveBranches.length <= 1 ? (
+              <div className="flex items-center gap-2 bg-surface-container-low border border-primary/20 rounded-xl px-3.5 py-1.5 shadow-sm text-xs font-semibold text-primary">
+                <span className="material-symbols-outlined text-[17px]">location_on</span>
+                <span>{liveBranches[0]?.name || assignedBranchName || 'Headquarters'}</span>
               </div>
             ) : (
               <div className="relative flex items-center bg-surface-container-low rounded-xl px-3 py-1.5 shadow-sm">
@@ -404,10 +417,12 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                   onChange={(e) => handleBranchSelect(e.target.value)}
                   className="bg-transparent text-xs sm:text-sm text-on-surface font-medium focus:outline-none pr-7 cursor-pointer"
                 >
-                  <option value="all">All Branches (3)</option>
-                  <option value="bole-bulbula">Bole Bulbula</option>
-                  <option value="kazanchis">Kazanchis</option>
-                  <option value="cmc">CMC Branch</option>
+                  <option value="all">All Branches ({liveBranches.length})</option>
+                  {liveBranches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
                 </select>
                 <span className="material-symbols-outlined text-secondary text-[16px] absolute right-2 pointer-events-none">
                   unfold_more

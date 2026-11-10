@@ -2,6 +2,7 @@ import prisma from "../../utils/prisma";
 import { UserRole } from "@prisma/client";
 import { ValidationError, NotFoundError, ForbiddenError } from "../../errors/AppError";
 import { hashPassword } from "../../utils/password";
+import { NotificationService } from "../notification/notification.service";
 import {
   CreateEmployeeInput,
   UpdateEmployeeInput,
@@ -71,6 +72,14 @@ export class EmployeeService {
   static async createEmployee(data: CreateEmployeeInput, currentUser: CurrentUser) {
     this.checkBranchAccess(currentUser, data.branchId);
 
+    // Branch Admin governance requirement
+    const isOwner = currentUser.role === "OWNER";
+    if (!isOwner) {
+      if (!data.hireReason || data.hireReason.trim().length === 0) {
+        throw new ValidationError("Hiring reason is required for governance review / የቅጥር ምክንያት ያስፈልጋል");
+      }
+    }
+
     // Verify branch exists
     const branch = await prisma.branch.findUnique({
       where: { id: data.branchId },
@@ -83,7 +92,10 @@ export class EmployeeService {
     const { firstName, lastName } = this.splitName(data.fullName, data.firstName, data.lastName);
     const createAccount = Boolean(data.createLoginAccount || data.createPortalAccess);
 
-    return prisma.$transaction(async (tx) => {
+    const initialStatus = isOwner ? "ACTIVE" : "PENDING_APPROVAL";
+    const initialIsActive = isOwner ? (data.isActive !== undefined ? data.isActive : true) : false;
+
+    const employee = await prisma.$transaction(async (tx) => {
       let createdUserId: string | null = null;
 
       // Handle portal access account creation
@@ -124,7 +136,7 @@ export class EmployeeService {
       }
 
       // Create employee
-      const employee = await tx.employee.create({
+      const emp = await tx.employee.create({
         data: {
           firstName,
           lastName,
@@ -142,8 +154,10 @@ export class EmployeeService {
           emergencyContactPhone: data.emergencyContactPhone || null,
           baseSalary: data.baseSalary !== undefined && data.baseSalary !== null ? data.baseSalary : null,
           commissionRate: data.commissionRate !== undefined && data.commissionRate !== null ? data.commissionRate : 15,
-          isActive: data.isActive !== undefined ? data.isActive : true,
-          status: data.isActive !== undefined ? data.isActive : true,
+          isActive: initialIsActive,
+          status: initialStatus,
+          hireReason: data.hireReason || null,
+          requestedBy: currentUser.id,
           userId: createdUserId,
         },
         include: {
@@ -154,11 +168,36 @@ export class EmployeeService {
         },
       });
 
+      // If created by Branch Admin, register Governance Proposal
+      if (!isOwner) {
+        await tx.governanceRequest.create({
+          data: {
+            type: "EMPLOYEE_REGISTRATION",
+            status: "PENDING",
+            branchId: data.branchId,
+            requestedBy: currentUser.id,
+            reason: data.hireReason!,
+            payload: {
+              employeeId: emp.id,
+              fullName: `${emp.firstName} ${emp.lastName}`,
+              phone: emp.phone,
+              email: emp.email,
+              title: emp.title,
+              ritualTitle: emp.ritualTitle,
+              branchId: emp.branchId,
+              employmentType: emp.employmentType,
+              baseSalary: emp.baseSalary ? Number(emp.baseSalary) : null,
+              commissionRate: emp.commissionRate ? Number(emp.commissionRate) : null,
+            },
+          },
+        });
+      }
+
       // Default 7-day schedule adhering to standard hours
       const defaultSchedules = Array.from({ length: 7 }, (_, dayOfWeek) => {
         const isMonday = dayOfWeek === 1; // 1 is Monday rest day in sanctuary
         return {
-          employeeId: employee.id,
+          employeeId: emp.id,
           dayOfWeek,
           startTime: "08:30",
           endTime: "17:30",
@@ -172,8 +211,28 @@ export class EmployeeService {
         data: defaultSchedules,
       });
 
-      return employee;
+      return emp;
     });
+
+    // Post-transaction notifications
+    if (!isOwner) {
+      await NotificationService.notifyOwners({
+        branchId: data.branchId,
+        title: "Employee Proposal / የሰራተኛ ቅጥር",
+        message: `Employee proposal for ${employee.firstName} ${employee.lastName} submitted by branch admin.`,
+        type: "GOVERNANCE_REQUEST",
+        link: "/admin/governance",
+      });
+    } else {
+      await NotificationService.notifyBranchAdmins(data.branchId, {
+        title: "Employee Assigned / ሰራተኛ ተመደበ",
+        message: `Owner assigned ${employee.firstName} ${employee.lastName} to your branch.`,
+        type: "EMPLOYEE_ASSIGNMENT",
+        link: `/admin/employees/${employee.id}`,
+      });
+    }
+
+    return employee;
   }
 
   /**
@@ -182,7 +241,7 @@ export class EmployeeService {
   static async getEmployees(
     filter: {
       branchId?: string;
-      status?: boolean;
+      status?: boolean | string;
       search?: string;
       ritualCategory?: string;
     },
@@ -209,7 +268,12 @@ export class EmployeeService {
     }
 
     if (filter.status !== undefined) {
-      where.status = filter.status;
+      if (typeof filter.status === "boolean") {
+        where.status = filter.status ? "ACTIVE" : { not: "ACTIVE" };
+        where.isActive = filter.status;
+      } else if (typeof filter.status === "string") {
+        where.status = filter.status;
+      }
     }
 
     if (filter.search) {
@@ -232,7 +296,11 @@ export class EmployeeService {
         },
         services: {
           include: {
-            service: true,
+            service: {
+              include: {
+                serviceCategory: true,
+              },
+            },
           },
         },
         schedules: {
@@ -248,7 +316,20 @@ export class EmployeeService {
       orderBy: { createdAt: "desc" },
     });
 
-    return employees.map((emp) => this.sanitizeFinancialData(emp, currentUser));
+    return employees.map((emp: any) => {
+      const categoryNames = emp.services
+        ?.map((s: any) => s.service?.serviceCategory?.name || s.service?.category || s.service?.name)
+        .filter(Boolean) as string[];
+      const uniqueSpecialties = Array.from(new Set(categoryNames));
+      if (uniqueSpecialties.length === 0 && emp.ritualTitle) {
+        uniqueSpecialties.push(emp.ritualTitle);
+      }
+      const sanitized = this.sanitizeFinancialData(emp, currentUser);
+      return {
+        ...sanitized,
+        specialties: uniqueSpecialties,
+      };
+    });
   }
 
   /**
@@ -264,7 +345,11 @@ export class EmployeeService {
         },
         services: {
           include: {
-            service: true,
+            service: {
+              include: {
+                serviceCategory: true,
+              },
+            },
           },
         },
         schedules: {
@@ -299,7 +384,19 @@ export class EmployeeService {
       this.checkBranchAccess(currentUser, employee.branchId);
     }
 
-    return this.sanitizeFinancialData(employee, currentUser);
+    const categoryNames = (employee as any).services
+      ?.map((s: any) => s.service?.serviceCategory?.name || s.service?.category || s.service?.name)
+      .filter(Boolean) as string[];
+    const uniqueSpecialties = Array.from(new Set(categoryNames));
+    if (uniqueSpecialties.length === 0 && employee.ritualTitle) {
+      uniqueSpecialties.push(employee.ritualTitle);
+    }
+    const sanitized = this.sanitizeFinancialData(employee, currentUser);
+
+    return {
+      ...sanitized,
+      specialties: uniqueSpecialties,
+    };
   }
 
   /**
@@ -358,14 +455,19 @@ export class EmployeeService {
       updateData.commissionRate = data.commissionRate;
     }
     if (data.status !== undefined) {
-      updateData.status = data.status;
-      updateData.isActive = data.status;
+      if (typeof data.status === "boolean") {
+        updateData.status = data.status ? "ACTIVE" : "INACTIVE";
+        updateData.isActive = data.status;
+      } else {
+        updateData.status = data.status;
+        updateData.isActive = data.status === "ACTIVE";
+      }
     } else if (data.isActive !== undefined) {
-      updateData.status = data.isActive;
+      updateData.status = data.isActive ? "ACTIVE" : "INACTIVE";
       updateData.isActive = data.isActive;
     }
 
-    return prisma.employee.update({
+    const updatedEmployee = await prisma.employee.update({
       where: { id },
       data: updateData,
       include: {
@@ -373,6 +475,17 @@ export class EmployeeService {
         user: { select: { id: true, email: true, phone: true } },
       },
     });
+
+    if (data.branchId && data.branchId !== existing.branchId && currentUser.role === "OWNER") {
+      await NotificationService.notifyBranchAdmins(data.branchId, {
+        title: "Employee Assigned / ሰራተኛ ተመደበ",
+        message: `${updatedEmployee.firstName} ${updatedEmployee.lastName} has been assigned to your branch.`,
+        type: "EMPLOYEE_ASSIGNMENT",
+        link: `/admin/employees/${updatedEmployee.id}`,
+      });
+    }
+
+    return updatedEmployee;
   }
 
   /**
@@ -389,12 +502,14 @@ export class EmployeeService {
 
     this.checkBranchAccess(currentUser, employee.branchId);
 
-    const newStatus = !employee.status;
+    const isCurrentlyActive = employee.status === "ACTIVE" && employee.isActive;
+    const nextStatus = isCurrentlyActive ? "INACTIVE" : "ACTIVE";
+    const nextIsActive = !isCurrentlyActive;
 
     let warning: string | undefined;
 
     // If deactivating, check future bookings
-    if (!newStatus) {
+    if (!nextIsActive) {
       const now = new Date();
       const futureBookingsCount = await prisma.bookingItem.count({
         where: {
@@ -414,8 +529,8 @@ export class EmployeeService {
     const updated = await prisma.employee.update({
       where: { id },
       data: {
-        status: newStatus,
-        isActive: newStatus,
+        status: nextStatus,
+        isActive: nextIsActive,
       },
       include: { branch: true },
     });
@@ -727,7 +842,7 @@ export class EmployeeService {
     const branchFilter = effectiveBranchId ? { branchId: effectiveBranchId } : {};
 
     const totalActive = await prisma.employee.count({
-      where: { ...branchFilter, status: true },
+      where: { ...branchFilter, status: "ACTIVE", isActive: true },
     });
 
     const totalEmployees = await prisma.employee.count({
@@ -740,7 +855,8 @@ export class EmployeeService {
     const onDutyCount = await prisma.employee.count({
       where: {
         ...branchFilter,
-        status: true,
+        status: "ACTIVE",
+        isActive: true,
         schedules: {
           some: {
             dayOfWeek: currentDayOfWeek,
@@ -752,7 +868,7 @@ export class EmployeeService {
 
     // Commission pool calculation derived strictly from database compensation settings
     const activeStaffForCommission = await prisma.employee.findMany({
-      where: { ...branchFilter, status: true },
+      where: { ...branchFilter, status: "ACTIVE", isActive: true },
       select: { baseSalary: true, commissionRate: true },
     });
     const calculatedCommissionPool = activeStaffForCommission.reduce((acc, staff) => {
@@ -774,12 +890,13 @@ export class EmployeeService {
     const branchBreakdown = await Promise.all(
       branches.map(async (b) => {
         const activeCount = await prisma.employee.count({
-          where: { branchId: b.id, status: true },
+          where: { branchId: b.id, status: "ACTIVE", isActive: true },
         });
         const onDuty = await prisma.employee.count({
           where: {
             branchId: b.id,
-            status: true,
+            status: "ACTIVE",
+            isActive: true,
             schedules: {
               some: { dayOfWeek: currentDayOfWeek, isWorking: true },
             },

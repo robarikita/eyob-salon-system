@@ -13,7 +13,11 @@ export interface Employee {
   emergencyContactPhone?: string | null;
   baseSalary?: number | null;
   commissionRate?: number | null;
-  status: boolean;
+  status: string | boolean;
+  isActive?: boolean;
+  hireReason?: string | null;
+  requestedBy?: string | null;
+  specialties?: string[];
   branchId: string;
   branch?: {
     id: string;
@@ -89,9 +93,10 @@ export const employeeApi = {
     return json.data;
   },
 
-  async getAllEmployees(params?: { branchId?: string; search?: string }): Promise<Employee[]> {
+  async getAllEmployees(params?: { branchId?: string; status?: string | boolean; search?: string }): Promise<Employee[]> {
     const query = new URLSearchParams();
     if (params?.branchId && params.branchId !== 'all') query.append('branchId', params.branchId);
+    if (params?.status !== undefined) query.append('status', String(params.status));
     if (params?.search) query.append('search', params.search);
 
     const res = await fetch(`/api/v1/employees?${query.toString()}`, {
@@ -126,6 +131,20 @@ export const employeeApi = {
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.message || 'Failed to provision specialist');
+    }
+    const json = await res.json();
+    return json.data;
+  },
+
+  async updateEmployee(id: string, data: any): Promise<Employee> {
+    const res = await fetch(`/api/v1/employees/${id}`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Failed to update specialist');
     }
     const json = await res.json();
     return json.data;

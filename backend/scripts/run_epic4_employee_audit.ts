@@ -317,16 +317,23 @@ async function runEpic4Audit() {
         branchId: branchA.id,
         title: "Master Hair Artisan",
         workstation: "Suite A-04",
+        hireReason: "Staffing need for bridal sessions.",
       },
       adminAHeaders
     );
     const empA = createEmpARes.data.data;
     if (empA) cleanupEmployeeIds.push(empA.id);
 
+    // Approve via Owner / DB to activate for subsequent shift tests
+    await prisma.employee.update({
+      where: { id: empA.id },
+      data: { status: "ACTIVE", isActive: true },
+    });
+
     record(
       "SCENARIO 2.1",
       "Create Specialist in Assigned Branch",
-      createEmpARes.status === 201 && empA?.isActive === true,
+      createEmpARes.status === 201 && !!empA?.id,
       `Created ${empA?.firstName} ${empA?.lastName} with title: ${empA?.title}`
     );
 
@@ -350,7 +357,7 @@ async function runEpic4Audit() {
     const toggleDeactivate = await patchJson(`/employees/${empA.id}/toggle-status`, {}, adminAHeaders);
     const isDeactivated =
       toggleDeactivate.status === 200 &&
-      toggleDeactivate.data.data.status === false &&
+      (toggleDeactivate.data.data.status === "INACTIVE" || toggleDeactivate.data.data.status === false) &&
       toggleDeactivate.data.data.isActive === false;
     record(
       "SCENARIO 2.3",
@@ -363,7 +370,7 @@ async function runEpic4Audit() {
     const toggleReactivate = await patchJson(`/employees/${empA.id}/toggle-status`, {}, adminAHeaders);
     const isReactivated =
       toggleReactivate.status === 200 &&
-      toggleReactivate.data.data.status === true &&
+      (toggleReactivate.data.data.status === "ACTIVE" || toggleReactivate.data.data.status === true) &&
       toggleReactivate.data.data.isActive === true;
     record(
       "SCENARIO 2.4",
@@ -389,6 +396,7 @@ async function runEpic4Audit() {
         title: "Master Aesthetician",
         createLoginAccount: true,
         password: portalEmpPwd,
+        hireReason: "Spa treatment specialist requirement.",
       },
       adminAHeaders
     );
@@ -396,6 +404,10 @@ async function runEpic4Audit() {
     if (portalEmp) {
       cleanupEmployeeIds.push(portalEmp.id);
       if (portalEmp.userId) cleanupUserIds.push(portalEmp.userId);
+      await prisma.employee.update({
+        where: { id: portalEmp.id },
+        data: { status: "ACTIVE", isActive: true },
+      });
     }
 
     record(

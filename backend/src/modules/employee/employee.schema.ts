@@ -23,11 +23,15 @@ export const createEmployeeSchema = z.object({
   password: z.string().min(6).optional().nullable(),
   tempPassword: z.string().min(6).optional().nullable(),
   isActive: z.boolean().optional(),
+  hireReason: z.string().optional().nullable(),
+  requestedBy: z.string().optional().nullable(),
 });
 
 export const updateEmployeeSchema = createEmployeeSchema.partial().extend({
-  status: z.boolean().optional(),
+  status: z.union([z.boolean(), z.string()]).optional(),
   isActive: z.boolean().optional(),
+  hireReason: z.string().optional().nullable(),
+  requestedBy: z.string().optional().nullable(),
 });
 
 export const assignServicesSchema = z.object({

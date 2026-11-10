@@ -584,6 +584,14 @@ export class AdminController {
                 isActive: false,
               },
             });
+          } else if (govRequest.type === "EMPLOYEE_REGISTRATION" && payload?.employeeId) {
+            await tx.employee.update({
+              where: { id: payload.employeeId },
+              data: {
+                status: "ACTIVE",
+                isActive: true,
+              },
+            });
           }
         } else {
           // Rejected
@@ -596,6 +604,14 @@ export class AdminController {
             await tx.service.update({
               where: { id: payload.serviceId },
               data: { approvalStatus: "REJECTED" },
+            });
+          } else if (govRequest.type === "EMPLOYEE_REGISTRATION" && payload?.employeeId) {
+            await tx.employee.update({
+              where: { id: payload.employeeId },
+              data: {
+                status: "REJECTED",
+                isActive: false,
+              },
             });
           }
         }
@@ -623,6 +639,13 @@ export class AdminController {
         notifMessage = isApprove
           ? `Your deactivation request for ${serviceName} at ${govRequest.branch.name} was approved.`
           : `Your deactivation request for ${serviceName} was declined: ${reviewNote || govRequest.reason}`;
+      } else if (govRequest.type === "EMPLOYEE_REGISTRATION" && payload?.employeeId) {
+        const targetEmp = await prisma.employee.findUnique({ where: { id: payload.employeeId } });
+        const empName = targetEmp ? `${targetEmp.firstName} ${targetEmp.lastName}` : "Specialist";
+        notifTitle = isApprove ? "Registration Approved / ቅጥር ጸድቋል" : "Registration Declined / ቅጥር ውድቅ ተደርጓል";
+        notifMessage = isApprove
+          ? `Employee proposal for ${empName} was approved by Owner.`
+          : `Employee proposal for ${empName} was rejected: ${reviewNote || govRequest.reason || "Declined"}`;
       }
 
       await NotificationService.createNotification({
@@ -631,7 +654,7 @@ export class AdminController {
         title: notifTitle,
         message: notifMessage,
         type: "APPROVAL_NOTICE",
-        link: "/admin/services",
+        link: govRequest.type === "EMPLOYEE_REGISTRATION" ? "/admin/employees" : "/admin/services",
       });
 
       res.status(200).json({

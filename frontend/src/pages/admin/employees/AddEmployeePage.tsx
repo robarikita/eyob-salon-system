@@ -4,33 +4,44 @@ import AdminLayout from '../../../components/admin/AdminLayout';
 import { employeeApi } from '../../../api/employeeApi';
 import { branchApi, BranchDTO } from '../../../api/branchApi';
 import { useLanguage } from '../../../context/LanguageContext';
+import { useAuth } from '../../../context/AuthContext';
 
 export const AddEmployeePage: React.FC = () => {
   const navigate = useNavigate();
   const { language } = useLanguage();
+  const { user } = useAuth();
   const isAm = language === 'am';
+
+  const isBranchAdmin = user?.role === 'BRANCH_ADMIN';
 
   const [branches, setBranches] = useState<BranchDTO[]>([]);
   const [fullName, setFullName] = useState('');
   const [amharicName, setAmharicName] = useState('');
   const [phone, setPhone] = useState('+251');
   const [email, setEmail] = useState('');
-  const [branchId, setBranchId] = useState('');
+  const [branchId, setBranchId] = useState(isBranchAdmin ? (user?.branchId || '') : '');
   const [title, setTitle] = useState('');
   const [workstation, setWorkstation] = useState('');
+  const [hireReason, setHireReason] = useState('');
   const [createAccount, setCreateAccount] = useState(false);
   const [password, setPassword] = useState('EyobSanctuary#2025!');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
+    if (isBranchAdmin && user?.branchId) {
+      setBranchId(user.branchId);
+    }
+  }, [isBranchAdmin, user?.branchId]);
+
+  useEffect(() => {
     branchApi.listBranches().then((list) => {
       setBranches(list);
-      if (list.length > 0) {
+      if (!isBranchAdmin && list.length > 0 && !branchId) {
         setBranchId(list[0].id);
       }
     }).catch(() => {});
-  }, []);
+  }, [isBranchAdmin]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,8 +57,15 @@ export const AddEmployeePage: React.FC = () => {
       return;
     }
 
-    if (!branchId) {
+    const effectiveBranchId = isBranchAdmin ? user?.branchId : branchId;
+
+    if (!effectiveBranchId) {
       setErrorMsg(isAm ? 'ቅርንጫፍ ይምረጡ' : 'Select branch');
+      return;
+    }
+
+    if (isBranchAdmin && !hireReason.trim()) {
+      setErrorMsg(isAm ? 'የቅጥር ምክንያት ያስፈልጋል' : 'Hire reason required');
       return;
     }
 
@@ -58,21 +76,29 @@ export const AddEmployeePage: React.FC = () => {
         amharicName: amharicName.trim() || undefined,
         phone: phone.trim(),
         email: email.trim() || undefined,
-        branchId,
+        branchId: effectiveBranchId,
         title: title.trim() || undefined,
         ritualTitle: title.trim() || undefined,
         workstation: workstation.trim() || undefined,
+        hireReason: isBranchAdmin ? hireReason.trim() : (hireReason.trim() || undefined),
         createLoginAccount: createAccount,
         password: createAccount ? password : undefined,
       });
 
-      navigate(`/admin/employees/${created.id}/services`);
+      if (isBranchAdmin) {
+        alert(isAm ? 'የሰራተኛ ቅጥር ጥያቄ ለባለቤቱ ቀርቧል' : 'Employee proposal submitted for Owner approval');
+        navigate('/admin/employees');
+      } else {
+        navigate(`/admin/employees/${created.id}/services`);
+      }
     } catch (err: any) {
       setErrorMsg(err.message || 'Creation failed');
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const assignedBranch = branches.find((b) => b.id === (isBranchAdmin ? user?.branchId : branchId));
 
   return (
     <AdminLayout selectedBranch={branchId} onBranchChange={setBranchId}>
@@ -84,7 +110,9 @@ export const AddEmployeePage: React.FC = () => {
               {isAm ? 'አዲስ ባለሙያ' : 'Add Specialist'}
             </h1>
             <p className="text-xs text-stone-400">
-              {isAm ? 'የባለሙያ መረጃ ይመዝግቡ' : 'Provision personnel record'}
+              {isBranchAdmin
+                ? (isAm ? 'የቅጥር ጥያቄ ለባለቤት' : 'Submit Hire Proposal')
+                : (isAm ? 'የባለሙያ መዝገብ ፍጠር' : 'Provision personnel record')}
             </p>
           </div>
 
@@ -171,18 +199,25 @@ export const AddEmployeePage: React.FC = () => {
               <label className="block text-xs font-semibold text-stone-300 mb-1">
                 {isAm ? 'ቅርንጫፍ *' : 'Branch *'}
               </label>
-              <select
-                required
-                value={branchId}
-                onChange={(e) => setBranchId(e.target.value)}
-                className="w-full bg-[#0E0B09] border border-[#2C2724] rounded-lg px-3 py-2 text-xs text-[#FAF7F2] outline-none focus:border-[#D4AF37]"
-              >
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
+              {isBranchAdmin ? (
+                <div className="w-full bg-[#0E0B09] border border-[#2C2724] rounded-lg px-3 py-2 text-xs text-[#D4AF37] font-semibold flex items-center gap-2">
+                  <span className="material-symbols-outlined text-sm text-stone-400">lock</span>
+                  <span>{assignedBranch?.name || user?.branchId || 'Assigned Branch'}</span>
+                </div>
+              ) : (
+                <select
+                  required
+                  value={branchId}
+                  onChange={(e) => setBranchId(e.target.value)}
+                  className="w-full bg-[#0E0B09] border border-[#2C2724] rounded-lg px-3 py-2 text-xs text-[#FAF7F2] outline-none focus:border-[#D4AF37]"
+                >
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             <div>
@@ -213,15 +248,32 @@ export const AddEmployeePage: React.FC = () => {
             />
           </div>
 
+          {/* Branch Admin Mandatory Hire Reason */}
+          {isBranchAdmin && (
+            <div>
+              <label className="block text-xs font-semibold text-[#D4AF37] mb-1">
+                {isAm ? 'የቅጥር ምክንያት *' : 'Hire Reason *'}
+              </label>
+              <textarea
+                required
+                rows={3}
+                value={hireReason}
+                onChange={(e) => setHireReason(e.target.value)}
+                placeholder={isAm ? 'የቅጥር ምክንያትና አስፈላጊነት ያስገቡ...' : 'Justification for hiring this specialist...'}
+                className="w-full bg-[#0E0B09] border border-[#2C2724] rounded-lg px-3 py-2 text-xs text-[#FAF7F2] placeholder-stone-600 outline-none focus:border-[#D4AF37]"
+              />
+            </div>
+          )}
+
           {/* Portal Access Toggle */}
           <div className="pt-2 border-t border-[#2C2724]">
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-xs font-bold text-[#D4AF37] block">
-                  {isAm ? 'አካውንት ክፈት' : 'Create Login Account'}
+                  {isAm ? 'አካውንት ክፈት' : 'Create Login'}
                 </span>
                 <span className="text-[11px] text-stone-400">
-                  {isAm ? 'የሰራተኛ መግቢያ ፍቀድ' : 'Allow staff floor login'}
+                  {isAm ? 'የሰራተኛ መግቢያ ፍቀድ' : 'Allow floor login'}
                 </span>
               </div>
               <input
@@ -255,12 +307,10 @@ export const AddEmployeePage: React.FC = () => {
               className="px-6 py-2.5 rounded-lg bg-[#D4AF37] hover:bg-[#b89528] text-[#0E0B09] text-xs font-bold uppercase tracking-wider transition disabled:opacity-50"
             >
               {isSubmitting
-                ? isAm
-                  ? 'በመመዝገብ ላይ...'
-                  : 'Saving...'
-                : isAm
-                ? 'መዝግብ እና ቀጥል'
-                : 'Save & Continue'}
+                ? (isAm ? 'በመላክ ላይ...' : 'Submitting...')
+                : isBranchAdmin
+                ? (isAm ? 'እንዲጸድቅ ላክ' : 'Submit Approval')
+                : (isAm ? 'መዝግብ' : 'Register Employee')}
             </button>
           </div>
         </form>

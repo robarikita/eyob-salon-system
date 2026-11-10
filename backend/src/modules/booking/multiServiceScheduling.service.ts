@@ -136,7 +136,7 @@ export class MultiServiceSchedulingService {
     const endOfDayUTC = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
 
     const branchSpecialists = await prisma.employee.findMany({
-      where: { branchId, status: true, isActive: true },
+      where: { branchId, status: 'ACTIVE', isActive: true },
       include: {
         services: { where: { isQualified: true } },
       },

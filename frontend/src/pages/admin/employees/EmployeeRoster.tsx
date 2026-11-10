@@ -4,18 +4,29 @@ import AdminLayout from '../../../components/admin/AdminLayout';
 import { employeeApi, Employee } from '../../../api/employeeApi';
 import { branchApi, BranchDTO } from '../../../api/branchApi';
 import { useLanguage } from '../../../context/LanguageContext';
+import { useAuth } from '../../../context/AuthContext';
 
 export const EmployeeRoster: React.FC = () => {
   const navigate = useNavigate();
   const { language } = useLanguage();
+  const { user } = useAuth();
   const isAm = language === 'am';
+
+  const isBranchAdmin = user?.role === 'BRANCH_ADMIN';
+  const initialBranch = isBranchAdmin ? (user?.branchId || '') : 'all';
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [branches, setBranches] = useState<BranchDTO[]>([]);
-  const [selectedBranch, setSelectedBranch] = useState('all');
+  const [selectedBranch, setSelectedBranch] = useState(initialBranch);
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (isBranchAdmin && user?.branchId) {
+      setSelectedBranch(user.branchId);
+    }
+  }, [isBranchAdmin, user?.branchId]);
 
   useEffect(() => {
     branchApi.listBranches().then(setBranches).catch(() => {});
@@ -24,8 +35,9 @@ export const EmployeeRoster: React.FC = () => {
   const loadEmployees = async () => {
     try {
       setLoading(true);
+      const effectiveBranch = isBranchAdmin ? user?.branchId : (selectedBranch !== 'all' ? selectedBranch : undefined);
       const list = await employeeApi.getAllEmployees({
-        branchId: selectedBranch !== 'all' ? selectedBranch : undefined,
+        branchId: effectiveBranch || undefined,
         search: searchQuery.trim() || undefined,
       });
       setEmployees(list);
@@ -38,7 +50,7 @@ export const EmployeeRoster: React.FC = () => {
 
   useEffect(() => {
     loadEmployees();
-  }, [selectedBranch, searchQuery]);
+  }, [selectedBranch, searchQuery, user?.branchId]);
 
   const handleToggleStatus = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -49,7 +61,7 @@ export const EmployeeRoster: React.FC = () => {
       }
       setEmployees((prev) =>
         prev.map((emp) =>
-          emp.id === id ? { ...emp, status: res.employee.status } : emp
+          emp.id === id ? { ...emp, status: res.employee.status, isActive: res.employee.isActive } : emp
         )
       );
     } catch (err: any) {
@@ -58,8 +70,15 @@ export const EmployeeRoster: React.FC = () => {
   };
 
   const filteredEmployees = employees.filter((emp) => {
-    if (statusFilter === 'active' && !emp.status) return false;
-    if (statusFilter === 'inactive' && emp.status) return false;
+    const isAct = emp.status === 'ACTIVE' || (emp.status === true && emp.isActive !== false);
+    const isPend = emp.status === 'PENDING_APPROVAL';
+    const isRej = emp.status === 'REJECTED';
+    const isInact = emp.status === 'INACTIVE' || emp.status === false || emp.isActive === false;
+
+    if (statusFilter === 'ACTIVE') return isAct;
+    if (statusFilter === 'PENDING_APPROVAL') return isPend;
+    if (statusFilter === 'INACTIVE') return isInact;
+    if (statusFilter === 'REJECTED') return isRej;
     return true;
   });
 
@@ -103,18 +122,21 @@ export const EmployeeRoster: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <select
-              value={selectedBranch}
-              onChange={(e) => setSelectedBranch(e.target.value)}
-              className="bg-[#0E0B09] border border-[#2C2724] rounded-lg px-3 py-2 text-xs text-[#FAF7F2] outline-none focus:border-[#D4AF37]"
-            >
-              <option value="all">{isAm ? 'ሁሉም ቅርንጫፎች' : 'All Branches'}</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
+            {/* Owner-only branch selector */}
+            {!isBranchAdmin && (
+              <select
+                value={selectedBranch}
+                onChange={(e) => setSelectedBranch(e.target.value)}
+                className="bg-[#0E0B09] border border-[#2C2724] rounded-lg px-3 py-2 text-xs text-[#FAF7F2] outline-none focus:border-[#D4AF37]"
+              >
+                <option value="all">{isAm ? 'ሁሉም ቅርንጫፎች' : 'All Branches'}</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            )}
 
             <select
               value={statusFilter}
@@ -122,8 +144,10 @@ export const EmployeeRoster: React.FC = () => {
               className="bg-[#0E0B09] border border-[#2C2724] rounded-lg px-3 py-2 text-xs text-[#FAF7F2] outline-none focus:border-[#D4AF37]"
             >
               <option value="all">{isAm ? 'ሁሉም ሁኔታ' : 'All Status'}</option>
-              <option value="active">{isAm ? 'ንቁ' : 'Active'}</option>
-              <option value="inactive">{isAm ? 'ዝግ' : 'Inactive'}</option>
+              <option value="ACTIVE">{isAm ? 'ንቁ' : 'Active'}</option>
+              <option value="PENDING_APPROVAL">{isAm ? 'በመጠባበቅ' : 'Pending'}</option>
+              <option value="INACTIVE">{isAm ? 'ዝግ' : 'Inactive'}</option>
+              <option value="REJECTED">{isAm ? 'ውድቅ' : 'Rejected'}</option>
             </select>
           </div>
         </div>
@@ -155,6 +179,10 @@ export const EmployeeRoster: React.FC = () => {
                 <tbody className="divide-y divide-[#2C2724]">
                   {filteredEmployees.map((emp) => {
                     const isLinked = Boolean((emp as any).userId || (emp as any).user);
+                    const isAct = emp.status === 'ACTIVE' || (emp.status === true && emp.isActive !== false);
+                    const isPend = emp.status === 'PENDING_APPROVAL';
+                    const isRej = emp.status === 'REJECTED';
+
                     return (
                       <tr
                         key={emp.id}
@@ -210,21 +238,23 @@ export const EmployeeRoster: React.FC = () => {
                         </td>
 
                         <td className="py-3.5 px-4 text-center">
-                          <span
-                            className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                              emp.status
-                                ? 'bg-amber-950 text-[#D4AF37] border border-[#D4AF37]/40'
-                                : 'bg-stone-800 text-stone-500'
-                            }`}
-                          >
-                            {emp.status
-                              ? isAm
-                                ? 'ንቁ'
-                                : 'Active'
-                              : isAm
-                              ? 'ዝግ'
-                              : 'Inactive'}
-                          </span>
+                          {isPend ? (
+                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-950/60 text-amber-400 border border-amber-700/50">
+                              {isAm ? 'በመጠባበቅ' : 'Pending'}
+                            </span>
+                          ) : isAct ? (
+                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-950 text-emerald-400 border border-emerald-800">
+                              {isAm ? 'ንቁ' : 'Active'}
+                            </span>
+                          ) : isRej ? (
+                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-rose-950 text-rose-400 border border-rose-800">
+                              {isAm ? 'ውድቅ' : 'Rejected'}
+                            </span>
+                          ) : (
+                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-stone-800 text-stone-500">
+                              {isAm ? 'ዝግ' : 'Inactive'}
+                            </span>
+                          )}
                         </td>
 
                         <td
@@ -247,19 +277,19 @@ export const EmployeeRoster: React.FC = () => {
                               className="px-2 py-1 rounded bg-[#0E0B09] border border-[#2C2724] hover:border-[#D4AF37] text-[11px] text-stone-300 hover:text-[#D4AF37] transition"
                               title="Shift Schedule"
                             >
-                              {isAm ? 'መርሃግብር' : 'Schedule'}
+                              {isAm ? 'ሰዓት' : 'Schedule'}
                             </button>
 
                             <button
                               type="button"
                               onClick={(e) => handleToggleStatus(emp.id, e)}
                               className={`px-2 py-1 rounded text-[11px] font-semibold transition ${
-                                emp.status
+                                isAct
                                   ? 'border border-red-900/50 text-red-400 hover:bg-red-950/40'
                                   : 'border border-emerald-900/50 text-emerald-400 hover:bg-emerald-950/40'
                               }`}
                             >
-                              {emp.status
+                              {isAct
                                 ? isAm
                                   ? 'አቦዝን'
                                   : 'Deactivate'

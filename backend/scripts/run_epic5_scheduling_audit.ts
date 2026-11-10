@@ -150,7 +150,7 @@ async function runEpic5Audit() {
         phone: specialistUser.phone,
         ritualTitle: "Master Artisan",
         employmentType: "FULL_TIME",
-        status: true,
+        status: "ACTIVE",
         schedules: {
           create: [
             // Sunday day off

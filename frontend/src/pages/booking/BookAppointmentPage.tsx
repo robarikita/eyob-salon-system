@@ -11,6 +11,7 @@ export interface SpecialistOption {
   name: string;
   role: string;
   initials: string;
+  specialties?: string[];
 }
 
 export const BookAppointmentPage: React.FC = () => {
@@ -209,11 +210,15 @@ export const BookAppointmentPage: React.FC = () => {
         : `${emp.firstName} ${emp.lastName}`.trim();
       const initials = `${emp.firstName?.[0] || 'S'}${emp.lastName?.[0] || 'P'}`.toUpperCase();
       const role = emp.ritualTitle || 'Stylist / ባለሙያ';
+      const specialties = (emp.specialties && emp.specialties.length > 0)
+        ? emp.specialties
+        : ((emp.services?.map((s: any) => s.service?.title || s.service?.name).filter(Boolean) as string[]) || []);
       return {
         id: emp.id,
         name,
         role,
         initials,
+        specialties,
       };
     }),
   ];
@@ -341,14 +346,21 @@ export const BookAppointmentPage: React.FC = () => {
           </Link>
 
           {selectedBranch && (
-            <button
-              onClick={() => setShowBranchModal(true)}
-              className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded bg-[#181412] border border-[#3E342F] text-xs text-[#FAF7F2] hover:border-[#D4AF37] transition cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-xs text-[#D4AF37]">location_on</span>
-              <span>{selectedBranch.name}</span>
-              <span className="text-[#D4AF37] text-[10px] ml-1 font-semibold">Change / ቀይር</span>
-            </button>
+            branches.length > 1 ? (
+              <button
+                onClick={() => setShowBranchModal(true)}
+                className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded bg-[#181412] border border-[#3E342F] text-xs text-[#FAF7F2] hover:border-[#D4AF37] transition cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-xs text-[#D4AF37]">location_on</span>
+                <span>{selectedBranch.name}</span>
+                <span className="text-[#D4AF37] text-[10px] ml-1 font-semibold">Change / ቀይር</span>
+              </button>
+            ) : (
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded bg-[#181412] border border-[#3E342F] text-xs text-[#FAF7F2]">
+                <span className="material-symbols-outlined text-xs text-[#D4AF37]">location_on</span>
+                <span>{selectedBranch.name}</span>
+              </div>
+            )
           )}
         </div>
 
@@ -465,14 +477,21 @@ export const BookAppointmentPage: React.FC = () => {
                 </h1>
               </div>
               {selectedBranch && (
-                <button
-                  type="button"
-                  onClick={() => setShowBranchModal(true)}
-                  className="text-xs text-[#775A00] hover:underline font-semibold flex items-center gap-1 mt-2 sm:mt-0 cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-sm">store</span>
-                  <span>{selectedBranch.name}</span>
-                </button>
+                branches.length > 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowBranchModal(true)}
+                    className="text-xs text-[#775A00] hover:underline font-semibold flex items-center gap-1 mt-2 sm:mt-0 cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-sm">store</span>
+                    <span>{selectedBranch.name}</span>
+                  </button>
+                ) : (
+                  <div className="text-xs text-[#775A00] font-semibold flex items-center gap-1 mt-2 sm:mt-0">
+                    <span className="material-symbols-outlined text-sm">store</span>
+                    <span>{selectedBranch.name}</span>
+                  </div>
+                )
               )}
             </div>
 
@@ -800,6 +819,15 @@ export const BookAppointmentPage: React.FC = () => {
                           }`}>
                             {sp.role}
                           </span>
+                          {sp.specialties && sp.specialties.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {sp.specialties.slice(0, 3).map((spec, idx) => (
+                                <span key={idx} className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-[#D4AF37]/10 text-[#775A00] border border-[#D4AF37]/30">
+                                  {spec}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -833,13 +861,15 @@ export const BookAppointmentPage: React.FC = () => {
                 <span className="text-stone-400">Branch / ቅርንጫፍ</span>
                 <div className="flex items-center gap-1.5 font-semibold text-[#FAF7F2]">
                   <span>{selectedBranch?.name || '—'}</span>
-                  <button
-                    type="button"
-                    onClick={() => setShowBranchModal(true)}
-                    className="text-[#D4AF37] hover:underline text-[10px] cursor-pointer"
-                  >
-                    Edit / ቀይር
-                  </button>
+                  {branches.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowBranchModal(true)}
+                      className="text-[#D4AF37] hover:underline text-[10px] cursor-pointer"
+                    >
+                      Edit / ቀይር
+                    </button>
+                  )}
                 </div>
               </div>
 

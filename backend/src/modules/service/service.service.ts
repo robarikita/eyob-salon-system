@@ -1425,7 +1425,7 @@ export class ServiceRitualService {
     const avgTicketPrice = totalRituals > 0 ? Math.round(totalPrice / totalRituals) : 820;
 
     const branchSpecialistsCount = await prisma.employee.count({
-      where: { branchId: branch.id, status: true },
+      where: { branchId: branch.id, status: 'ACTIVE', isActive: true },
     });
 
     return {

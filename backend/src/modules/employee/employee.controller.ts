@@ -25,10 +25,14 @@ export class EmployeeController {
     try {
       const { branchId, status, search, ritualCategory } = req.query;
       const isElevated = req.user?.role === "OWNER" || req.user?.role === "BRANCH_ADMIN";
+      const parsedStatus = status !== undefined
+        ? (status === "true" || status === "1" ? true : status === "false" || status === "0" ? false : String(status))
+        : (isElevated ? undefined : true);
+
       const employees = await EmployeeService.getEmployees(
         {
           branchId: branchId as string | undefined,
-          status: status !== undefined ? status === "true" || status === "1" : (isElevated ? undefined : true),
+          status: parsedStatus,
           search: search as string | undefined,
           ritualCategory: ritualCategory as string | undefined,
         },

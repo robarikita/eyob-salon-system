@@ -168,7 +168,7 @@ export class AvailabilityService {
           isQualified: true,
           employee: {
             branchId,
-            status: true,
+            status: 'ACTIVE',
             isActive: true,
           },
         },
@@ -185,7 +185,7 @@ export class AvailabilityService {
       } else {
         // Fallback: If no specialist has strict service qualification mapping yet, allow active branch staff
         const branchEmployees = await prisma.employee.findMany({
-          where: { branchId, status: true, isActive: true },
+          where: { branchId, status: 'ACTIVE', isActive: true },
           select: { id: true, firstName: true, lastName: true },
         });
         eligibleSpecialists = branchEmployees.map((e) => ({

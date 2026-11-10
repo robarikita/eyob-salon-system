@@ -347,7 +347,7 @@ async function runAudit() {
 
     // Find employee assigned to Branch A
     const employee = await prisma.employee.findFirst({
-      where: { branchId: branchA.id, status: true },
+      where: { branchId: branchA.id, status: "ACTIVE" },
     });
 
     if (!employee) {
