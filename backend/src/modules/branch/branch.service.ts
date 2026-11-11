@@ -2,6 +2,7 @@ import prisma from "../../utils/prisma";
 import { UserRole } from "@prisma/client";
 import { ValidationError, NotFoundError } from "../../errors/AppError";
 import { hashPassword } from "../../utils/password";
+import { NotificationService } from "../notification/notification.service";
 import { z } from "zod";
 import {
   createBranchSchema,
@@ -321,6 +322,23 @@ export class BranchService {
       },
     });
 
+    if (branch.isActive && updatePayload.isActive === false) {
+      const branchAdmins = await prisma.user.findMany({
+        where: { branchId: branch.id, role: "BRANCH_ADMIN" },
+      });
+
+      for (const admin of branchAdmins) {
+        await NotificationService.createNotification({
+          userId: admin.id,
+          branchId: branch.id,
+          title: "Branch Deactivated / ቅርንጫፍ ተዘግቷል",
+          message: `Your branch (${branch.name}) has been deactivated by Owner. Booking and active operations are paused.`,
+          type: "OWNER_MUTATION",
+          link: "/admin/branches",
+        });
+      }
+    }
+
     return {
       ...updated,
       phone: updated.phoneNumber,
@@ -498,6 +516,23 @@ export class BranchService {
       where: { id },
       data: { isActive: newStatus },
     });
+
+    if (branch.isActive && !newStatus) {
+      const branchAdmins = await prisma.user.findMany({
+        where: { branchId: branch.id, role: "BRANCH_ADMIN" },
+      });
+
+      for (const admin of branchAdmins) {
+        await NotificationService.createNotification({
+          userId: admin.id,
+          branchId: branch.id,
+          title: "Branch Deactivated / ቅርንጫፍ ተዘግቷል",
+          message: `Your branch (${branch.name}) has been deactivated by Owner. Booking and active operations are paused.`,
+          type: "OWNER_MUTATION",
+          link: "/admin/branches",
+        });
+      }
+    }
 
     return {
       ...updated,
