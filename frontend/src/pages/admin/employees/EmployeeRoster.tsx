@@ -5,28 +5,22 @@ import { employeeApi, Employee } from '../../../api/employeeApi';
 import { branchApi, BranchDTO } from '../../../api/branchApi';
 import { useLanguage } from '../../../context/LanguageContext';
 import { useAuth } from '../../../context/AuthContext';
+import { useBranchFilter } from '../../../context/BranchFilterContext';
 
 export const EmployeeRoster: React.FC = () => {
   const navigate = useNavigate();
   const { language } = useLanguage();
   const { user } = useAuth();
+  const { selectedBranchId, setSelectedBranchId, effectiveBranchId } = useBranchFilter();
   const isAm = language === 'am';
 
   const isBranchAdmin = user?.role === 'BRANCH_ADMIN';
-  const initialBranch = isBranchAdmin ? (user?.branchId || '') : 'all';
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [branches, setBranches] = useState<BranchDTO[]>([]);
-  const [selectedBranch, setSelectedBranch] = useState(initialBranch);
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (isBranchAdmin && user?.branchId) {
-      setSelectedBranch(user.branchId);
-    }
-  }, [isBranchAdmin, user?.branchId]);
 
   useEffect(() => {
     branchApi.listBranches().then(setBranches).catch(() => {});
@@ -35,7 +29,7 @@ export const EmployeeRoster: React.FC = () => {
   const loadEmployees = async () => {
     try {
       setLoading(true);
-      const effectiveBranch = isBranchAdmin ? user?.branchId : (selectedBranch !== 'all' ? selectedBranch : undefined);
+      const effectiveBranch = isBranchAdmin ? user?.branchId : effectiveBranchId;
       const list = await employeeApi.getAllEmployees({
         branchId: effectiveBranch || undefined,
         search: searchQuery.trim() || undefined,
@@ -50,7 +44,7 @@ export const EmployeeRoster: React.FC = () => {
 
   useEffect(() => {
     loadEmployees();
-  }, [selectedBranch, searchQuery, user?.branchId]);
+  }, [effectiveBranchId, searchQuery, user?.branchId]);
 
   const handleToggleStatus = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -83,7 +77,7 @@ export const EmployeeRoster: React.FC = () => {
   });
 
   return (
-    <AdminLayout selectedBranch={selectedBranch} onBranchChange={setSelectedBranch}>
+    <AdminLayout selectedBranch={selectedBranchId} onBranchChange={setSelectedBranchId}>
       <div className="space-y-6 max-w-[1600px] mx-auto w-full text-[#FAF7F2]">
         {/* Header Bar */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[#2C2724]">
@@ -125,8 +119,8 @@ export const EmployeeRoster: React.FC = () => {
             {/* Owner-only branch selector */}
             {!isBranchAdmin && (
               <select
-                value={selectedBranch}
-                onChange={(e) => setSelectedBranch(e.target.value)}
+                value={selectedBranchId}
+                onChange={(e) => setSelectedBranchId(e.target.value)}
                 className="bg-[#0E0B09] border border-[#2C2724] rounded-lg px-3 py-2 text-xs text-[#FAF7F2] outline-none focus:border-[#D4AF37]"
               >
                 <option value="all">{isAm ? 'ሁሉም ቅርንጫፎች' : 'All Branches'}</option>

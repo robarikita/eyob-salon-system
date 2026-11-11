@@ -403,7 +403,12 @@ export class AdminController {
 
       if (req.user.role === "BRANCH_ADMIN") {
         where.branchId = req.user.branchId!;
-      } // OWNER sees all
+      } else if (req.user.role === "OWNER") {
+        const branchId = req.query.branchId as string | undefined;
+        if (branchId && branchId !== "all") {
+          where.branchId = branchId;
+        }
+      }
 
       const requests = await prisma.governanceRequest.findMany({
         where,

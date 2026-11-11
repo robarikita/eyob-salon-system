@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import AdminLayout from '../../../components/admin/AdminLayout';
+import { useBranchFilter } from '../../../context/BranchFilterContext';
 import {
   customerApi,
   ClienteleListItem,
@@ -7,7 +8,7 @@ import {
 } from '../../../api/customerApi';
 
 export const ClienteleDirectoryPage: React.FC = () => {
-
+  const { effectiveBranchId } = useBranchFilter();
   const [customers, setCustomers] = useState<ClienteleListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -20,11 +21,12 @@ export const ClienteleDirectoryPage: React.FC = () => {
   const [dossierData, setDossierData] = useState<CustomerDossierResponse | null>(null);
   const [loadingDossier, setLoadingDossier] = useState(false);
 
-  const fetchClientele = useCallback(async (searchQuery: string, pageNum: number) => {
+  const fetchClientele = useCallback(async (searchQuery: string, pageNum: number, branchId?: string) => {
     try {
       setLoading(true);
       const res = await customerApi.listClientele({
         search: searchQuery || undefined,
+        branchId: branchId,
         page: pageNum,
         limit: 15,
       });
@@ -41,10 +43,10 @@ export const ClienteleDirectoryPage: React.FC = () => {
 
   useEffect(() => {
     const handler = setTimeout(() => {
-      fetchClientele(search, 1);
+      fetchClientele(search, 1, effectiveBranchId);
     }, 300);
     return () => clearTimeout(handler);
-  }, [search, fetchClientele]);
+  }, [search, effectiveBranchId, fetchClientele]);
 
   const handleOpenDossier = async (customer: ClienteleListItem) => {
     setSelectedCustomer(customer);

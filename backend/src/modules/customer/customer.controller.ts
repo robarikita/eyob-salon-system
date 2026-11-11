@@ -6,11 +6,12 @@ export class CustomerController {
   static async listCustomers(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const search = req.query.search as string | undefined;
+      const branchId = req.query.branchId as string | undefined;
       const page = req.query.page ? Number(req.query.page) : 1;
       const limit = req.query.limit ? Number(req.query.limit) : 20;
 
       const result = await CustomerService.listCustomers(
-        { search, page, limit },
+        { search, branchId, page, limit },
         req.user!
       );
 

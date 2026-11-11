@@ -28,7 +28,7 @@ export class CustomerService {
    * Restricted to OWNER and BRANCH_ADMIN.
    */
   static async listCustomers(
-    filter: { search?: string; page?: number; limit?: number },
+    filter: { search?: string; branchId?: string; page?: number; limit?: number },
     caller: CallerUser
   ) {
     if (caller.role !== "OWNER" && caller.role !== "BRANCH_ADMIN") {
@@ -42,6 +42,17 @@ export class CustomerService {
     const whereClause: any = {
       role: "CUSTOMER",
     };
+
+    const targetBranchId =
+      caller.role === "BRANCH_ADMIN"
+        ? caller.branchId || undefined
+        : filter.branchId && filter.branchId !== "all"
+        ? filter.branchId
+        : undefined;
+
+    if (targetBranchId) {
+      whereClause.bookings = { some: { branchId: targetBranchId } };
+    }
 
     if (filter.search && filter.search.trim()) {
       const q = filter.search.trim();

@@ -136,6 +136,7 @@ export interface UpdateCustomerProfilePayload {
 export const customerApi = {
   async listClientele(params?: {
     search?: string;
+    branchId?: string;
     page?: number;
     limit?: number;
   }): Promise<ClienteleListResponse> {
@@ -145,6 +146,7 @@ export const customerApi = {
       localStorage.getItem('eyob_auth_token');
     const query = new URLSearchParams();
     if (params?.search) query.set('search', params.search);
+    if (params?.branchId && params.branchId !== 'all') query.set('branchId', params.branchId);
     if (params?.page) query.set('page', String(params.page));
     if (params?.limit) query.set('limit', String(params.limit));
 

@@ -9,6 +9,7 @@ import {
 } from '../../../api/serviceApi';
 import { branchApi, BranchDTO } from '../../../api/branchApi';
 import { useAuth } from '../../../context/AuthContext';
+import { useBranchFilter } from '../../../context/BranchFilterContext';
 
 const DURATION_PRESETS = [15, 30, 45, 60, 90, 120];
 
@@ -22,20 +23,14 @@ export const ServiceCatalogPage: React.FC = () => {
   const [services, setServices] = useState<ServiceRitual[]>([]);
   const [categoriesList, setCategoriesList] = useState<ServiceCategoryItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const { selectedBranchId, setSelectedBranchId, effectiveBranchId } = useBranchFilter();
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [selectedBranch, setSelectedBranch] = useState<string>(isBranchAdmin && user?.branchId ? user.branchId : 'all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [notification, setNotification] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (isBranchAdmin && user?.branchId) {
-      setSelectedBranch(user.branchId);
-    }
-  }, [isBranchAdmin, user?.branchId]);
-
-  const activeBranchId = isBranchAdmin && user?.branchId ? user.branchId : (selectedBranch === 'all' ? undefined : selectedBranch);
+  const activeBranchId = isBranchAdmin && user?.branchId ? user.branchId : effectiveBranchId;
 
   // Category Modal State (Create)
   const [categoryModalOpen, setCategoryModalOpen] = useState<boolean>(false);
@@ -480,8 +475,8 @@ export const ServiceCatalogPage: React.FC = () => {
                 {/* Branch Filter */}
                 {!isBranchAdmin && (
                   <select
-                    value={selectedBranch}
-                    onChange={(e) => setSelectedBranch(e.target.value)}
+                    value={selectedBranchId}
+                    onChange={(e) => setSelectedBranchId(e.target.value)}
                     className="h-10 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] font-semibold uppercase tracking-wider border border-[#2C2724] focus:outline-none focus:border-[#D4AF37] cursor-pointer"
                   >
                     <option value="all">All Branches / ሁሉም</option>

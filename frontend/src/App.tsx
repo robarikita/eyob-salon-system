@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { LanguageProvider } from './context/LanguageContext';
 import { AuthProvider } from './context/AuthContext';
+import { BranchFilterProvider } from './context/BranchFilterContext';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
 
 import HomePage from './pages/HomePage';
@@ -51,7 +52,8 @@ export const App: React.FC = () => {
     <LanguageProvider>
       <AuthProvider>
         <Router>
-          <Routes>
+          <BranchFilterProvider>
+            <Routes>
             {/* Public Client Facing Experience */}
             <Route path="/" element={<HomePage />} />
 
@@ -283,7 +285,8 @@ export const App: React.FC = () => {
             {/* Wildcard fallback to home */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-        </Router>
+        </BranchFilterProvider>
+      </Router>
       </AuthProvider>
     </LanguageProvider>
   );

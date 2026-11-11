@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useBranchFilter } from '../../context/BranchFilterContext';
+import { formatDateTime } from '../../utils/formatDate';
 import { LanguageToggle } from '../common/LanguageToggle';
 import { serviceApi, NotificationItem } from '../../api/serviceApi';
 import { branchApi, BranchDTO } from '../../api/branchApi';
@@ -14,15 +16,17 @@ interface AdminLayoutProps {
 
 export const AdminLayout: React.FC<AdminLayoutProps> = ({
   children,
-  selectedBranch = 'all',
+  selectedBranch,
   onBranchChange,
   activePath,
 }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout, hasPermission } = useAuth();
+  const { selectedBranchId, setSelectedBranchId, effectiveBranchId } = useBranchFilter();
   const currentPath = activePath || location.pathname;
-  const [currentBranch, setCurrentBranch] = useState(selectedBranch);
+
+  const currentBranch = selectedBranch || selectedBranchId;
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [assignedBranchName, setAssignedBranchName] = useState<string>('');
   const [liveBranches, setLiveBranches] = useState<BranchDTO[]>([]);
@@ -46,9 +50,9 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   const [unreadCount, setUnreadCount] = useState(0);
   const notifDropdownRef = useRef<HTMLDivElement>(null);
 
-  const loadNotifications = async () => {
+  const loadNotifications = async (bId?: string) => {
     try {
-      const list = await serviceApi.getNotifications();
+      const list = await serviceApi.getNotifications(bId);
       setNotifications(list || []);
       setUnreadCount((list || []).filter((n) => !n.isRead).length);
     } catch {
@@ -58,11 +62,11 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
 
   useEffect(() => {
     if (user) {
-      loadNotifications();
-      const interval = setInterval(loadNotifications, 30000);
+      loadNotifications(effectiveBranchId);
+      const interval = setInterval(() => loadNotifications(effectiveBranchId), 30000);
       return () => clearInterval(interval);
     }
-  }, [user]);
+  }, [user, effectiveBranchId]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -83,6 +87,30 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
       setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
       setUnreadCount(0);
     } catch {}
+  };
+
+  const handleDeleteNotification = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await serviceApi.deleteNotification(id);
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+      setUnreadCount((prev) => {
+        const wasUnread = notifications.find((n) => n.id === id && !n.isRead);
+        return wasUnread ? Math.max(0, prev - 1) : prev;
+      });
+    } catch (err: any) {
+      console.error('Failed to delete notification:', err);
+    }
+  };
+
+  const handleClearAllNotifications = async () => {
+    try {
+      await serviceApi.deleteAllNotifications(effectiveBranchId);
+      setNotifications([]);
+      setUnreadCount(0);
+    } catch (err: any) {
+      console.error('Failed to clear notifications:', err);
+    }
   };
 
   const handleNotificationClick = async (notif: NotificationItem) => {
@@ -120,9 +148,17 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   }, [user?.branchId, user?.role]);
 
   const handleBranchSelect = (val: string) => {
-    setCurrentBranch(val);
+    setSelectedBranchId(val);
     if (onBranchChange) onBranchChange(val);
   };
+
+  const activeBranchEntity =
+    user?.role === 'BRANCH_ADMIN'
+      ? liveBranches.find((b) => b.id === user.branchId)
+      : effectiveBranchId
+      ? liveBranches.find((b) => b.id === effectiveBranchId)
+      : null;
+  const isCurrentBranchDeactivated = activeBranchEntity ? activeBranchEntity.isActive === false : false;
 
   const navItems = [
     { label: 'Overview / አጠቃላይ', path: '/admin/employees/dashboard', icon: 'dashboard' },
@@ -398,37 +434,47 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
               <span className="material-symbols-outlined text-[20px]">menu</span>
             </button>
 
-            {/* Branch Selector (Locked Badge for Branch Admin; Switcher for Owner if >1 branch) */}
-            {user?.role === 'BRANCH_ADMIN' ? (
-              <div className="flex items-center gap-2 bg-surface-container-low border border-primary/20 rounded-xl px-3.5 py-1.5 shadow-sm text-xs font-semibold text-primary">
-                <span className="material-symbols-outlined text-[17px]">location_on</span>
-                <span>{assignedBranchName || 'Assigned Branch'}</span>
-              </div>
-            ) : liveBranches.length <= 1 ? (
-              <div className="flex items-center gap-2 bg-surface-container-low border border-primary/20 rounded-xl px-3.5 py-1.5 shadow-sm text-xs font-semibold text-primary">
-                <span className="material-symbols-outlined text-[17px]">location_on</span>
-                <span>{liveBranches[0]?.name || assignedBranchName || 'Headquarters'}</span>
-              </div>
-            ) : (
-              <div className="relative flex items-center bg-surface-container-low rounded-xl px-3 py-1.5 shadow-sm">
-                <span className="material-symbols-outlined text-primary text-[18px] mr-2">share_location</span>
-                <select
-                  value={currentBranch}
-                  onChange={(e) => handleBranchSelect(e.target.value)}
-                  className="bg-transparent text-xs sm:text-sm text-on-surface font-medium focus:outline-none pr-7 cursor-pointer"
-                >
-                  <option value="all">All Branches ({liveBranches.length})</option>
-                  {liveBranches.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
-                <span className="material-symbols-outlined text-secondary text-[16px] absolute right-2 pointer-events-none">
-                  unfold_more
-                </span>
-              </div>
-            )}
+            {/* Branch Selector and Optional Deactivation Banner */}
+            <div className="flex flex-col gap-1.5">
+              {isCurrentBranchDeactivated && (
+                <div className="bg-amber-950/80 border border-amber-500/50 text-amber-200 px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-between gap-3 shadow-md">
+                  <span>This branch is deactivated.</span>
+                  <span className="text-[10px] uppercase tracking-wider text-amber-400">Suspended / ታግዷል</span>
+                </div>
+              )}
+
+              {/* Branch Selector (Locked Badge for Branch Admin; Switcher for Owner if >1 branch) */}
+              {user?.role === 'BRANCH_ADMIN' ? (
+                <div className="flex items-center gap-2 bg-surface-container-low border border-primary/20 rounded-xl px-3.5 py-1.5 shadow-sm text-xs font-semibold text-primary">
+                  <span className="material-symbols-outlined text-[17px]">location_on</span>
+                  <span>{assignedBranchName || 'Assigned Branch'}</span>
+                </div>
+              ) : liveBranches.length <= 1 ? (
+                <div className="flex items-center gap-2 bg-surface-container-low border border-primary/20 rounded-xl px-3.5 py-1.5 shadow-sm text-xs font-semibold text-primary">
+                  <span className="material-symbols-outlined text-[17px]">location_on</span>
+                  <span>{liveBranches[0]?.name || assignedBranchName || 'Headquarters'}</span>
+                </div>
+              ) : (
+                <div className="relative flex items-center bg-surface-container-low rounded-xl px-3 py-1.5 shadow-sm">
+                  <span className="material-symbols-outlined text-primary text-[18px] mr-2">share_location</span>
+                  <select
+                    value={currentBranch}
+                    onChange={(e) => handleBranchSelect(e.target.value)}
+                    className="bg-transparent text-xs sm:text-sm text-on-surface font-medium focus:outline-none pr-7 cursor-pointer"
+                  >
+                    <option value="all">All Branches ({liveBranches.length})</option>
+                    {liveBranches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="material-symbols-outlined text-secondary text-[16px] absolute right-2 pointer-events-none">
+                    unfold_more
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Right Header: Search, Language, Notifications, Avatar */}
@@ -473,15 +519,26 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                         Notices / ማስታወቂያ
                       </span>
                     </div>
-                    {unreadCount > 0 && (
-                      <button
-                        type="button"
-                        onClick={handleMarkAllRead}
-                        className="text-[10px] text-[#D4AF37] hover:underline font-semibold uppercase tracking-wider"
-                      >
-                        Mark All Read / ሁሉንም አንብብ
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {unreadCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleMarkAllRead}
+                          className="text-[10px] text-[#D4AF37] hover:underline font-semibold uppercase tracking-wider"
+                        >
+                          Mark Read
+                        </button>
+                      )}
+                      {notifications.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleClearAllNotifications}
+                          className="text-[10px] text-red-400 hover:underline font-semibold uppercase tracking-wider"
+                        >
+                          Clear All / አጥፋ
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div className="max-h-80 overflow-y-auto divide-y divide-[#2C2724]">
@@ -490,35 +547,48 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                         No Notices / አዲስ ማስታወቂያ የለም
                       </div>
                     ) : (
-                      notifications.slice(0, 10).map((n) => (
+                      notifications.slice(0, 15).map((n) => (
                         <div
                           key={n.id}
                           onClick={() => handleNotificationClick(n)}
-                          className={`p-3.5 hover:bg-[#2C2724]/50 cursor-pointer transition flex items-start gap-3 ${
+                          className={`p-3.5 hover:bg-[#2C2724]/50 cursor-pointer transition flex items-start justify-between gap-3 ${
                             !n.isRead ? 'bg-[#0E0B09]/60' : ''
                           }`}
                         >
-                          <span
-                            className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
-                              !n.isRead ? 'bg-[#D4AF37]' : 'bg-transparent'
-                            }`}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="text-xs font-bold text-[#FAF7F2] truncate">
-                                {n.title}
-                              </span>
-                              <span className="text-[10px] text-stone-500 shrink-0">
-                                {new Date(n.createdAt).toLocaleDateString([], {
-                                  month: 'short',
-                                  day: 'numeric',
-                                })}
-                              </span>
+                          <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                            <span
+                              className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
+                                !n.isRead ? 'bg-[#D4AF37]' : 'bg-transparent'
+                              }`}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-xs font-bold text-[#FAF7F2] truncate">
+                                  {n.title}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-stone-300 mt-0.5 line-clamp-2">
+                                {n.message}
+                              </p>
+                              <div className="mt-1 flex items-center gap-2 text-[10px] text-stone-500">
+                                <span>{formatDateTime(n.createdAt)}</span>
+                                {n.updatedAt && n.updatedAt !== n.createdAt && (
+                                  <span className="text-[9px] text-stone-500">
+                                    • Updated: {formatDateTime(n.updatedAt)}
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            <p className="text-[11px] text-stone-300 mt-0.5 line-clamp-2">
-                              {n.message}
-                            </p>
                           </div>
+
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteNotification(n.id, e)}
+                            className="p-1 rounded text-stone-500 hover:text-red-400 hover:bg-red-950/30 transition shrink-0"
+                            title="Delete / አጥፋ"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">delete</span>
+                          </button>
                         </div>
                       ))
                     )}
