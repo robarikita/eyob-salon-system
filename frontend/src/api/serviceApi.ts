@@ -165,10 +165,11 @@ export interface NotificationItem {
   branchId?: string | null;
   title: string;
   message: string;
-  type: 'GOVERNANCE_REQUEST' | 'APPROVAL_NOTICE' | 'OWNER_MUTATION';
+  type: 'GOVERNANCE_REQUEST' | 'APPROVAL_NOTICE' | 'OWNER_MUTATION' | string;
   link?: string | null;
   isRead: boolean;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface ServiceCategoryItem {
@@ -896,8 +897,11 @@ export const serviceApi = {
   /**
    * Retrieve governance change requests for review
    */
-  async getGovernanceRequests(status?: string): Promise<GovernanceRequestItem[]> {
-    const query = status && status !== 'ALL' ? `?status=${status}` : '';
+  async getGovernanceRequests(status?: string, branchId?: string): Promise<GovernanceRequestItem[]> {
+    const params = new URLSearchParams();
+    if (status && status !== 'ALL') params.set('status', status);
+    if (branchId && branchId !== 'all') params.set('branchId', branchId);
+    const query = params.toString() ? `?${params.toString()}` : '';
     const res = await fetch(`${API_BASE}/admin/governance${query}`, {
       headers: getAuthHeaders(),
     });
@@ -932,13 +936,51 @@ export const serviceApi = {
   /**
    * List user notifications
    */
-  async getNotifications(): Promise<NotificationItem[]> {
-    const res = await fetch(`${API_BASE}/notifications`, {
+  async getNotifications(branchId?: string): Promise<NotificationItem[]> {
+    const url = branchId && branchId !== 'all'
+      ? `${API_BASE}/notifications?branchId=${branchId}`
+      : `${API_BASE}/notifications`;
+    const res = await fetch(url, {
       headers: getAuthHeaders(),
     });
     if (!res.ok) {
       const errJson = await res.json().catch(() => ({}));
       throw new Error(errJson.message || `Failed to fetch notifications (${res.status})`);
+    }
+    const json = await res.json();
+    return json.data || json;
+  },
+
+  /**
+   * Delete single notification
+   */
+  async deleteNotification(id: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/notifications/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Failed to delete notification (${res.status})`);
+    }
+    const json = await res.json();
+    return json.data || json;
+  },
+
+  /**
+   * Clear all notifications
+   */
+  async deleteAllNotifications(branchId?: string): Promise<any> {
+    const url = branchId && branchId !== 'all'
+      ? `${API_BASE}/notifications?branchId=${branchId}`
+      : `${API_BASE}/notifications`;
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Failed to clear notifications (${res.status})`);
     }
     const json = await res.json();
     return json.data || json;

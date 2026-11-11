@@ -1,4 +1,5 @@
 import prisma from "../../utils/prisma";
+import { NotFoundError } from "../../errors/AppError";
 
 export interface CreateNotificationInput {
   userId: string;
@@ -11,21 +12,75 @@ export interface CreateNotificationInput {
 
 export class NotificationService {
   /**
-   * List notifications for a specific user
+   * List notifications for a specific user, with optional branch filtering
    */
-  static async listNotifications(userId: string) {
+  static async listNotifications(
+    user: { id: string; role: string; branchId?: string | null },
+    branchId?: string
+  ) {
+    const where: any = { userId: user.id };
+
+    if (user.role === "BRANCH_ADMIN" && user.branchId) {
+      where.OR = [
+        { branchId: null },
+        { branchId: user.branchId },
+      ];
+    } else if (user.role === "OWNER" && branchId && branchId !== "all") {
+      where.OR = [
+        { branchId: null },
+        { branchId: branchId },
+      ];
+    }
+
     const [notifications, unreadCount] = await Promise.all([
       prisma.notification.findMany({
-        where: { userId },
+        where,
         orderBy: { createdAt: "desc" },
         take: 50,
       }),
       prisma.notification.count({
-        where: { userId, isRead: false },
+        where: { ...where, isRead: false },
       }),
     ]);
 
     return { notifications, unreadCount };
+  }
+
+  /**
+   * Delete a single notification (intentional user deletion)
+   */
+  static async deleteNotification(id: string, user: { id: string; role: string }) {
+    const where: any = { id };
+    if (user.role !== "OWNER") {
+      where.userId = user.id;
+    }
+
+    const existing = await prisma.notification.findFirst({ where });
+    if (!existing) {
+      throw new NotFoundError("Notification not found / ማሳወቂያው አልተገኘም");
+    }
+
+    return await prisma.notification.delete({
+      where: { id },
+    });
+  }
+
+  /**
+   * Delete all notifications for the user (intentional bulk deletion)
+   */
+  static async deleteAllNotifications(
+    user: { id: string; role: string; branchId?: string | null },
+    branchId?: string
+  ) {
+    const where: any = { userId: user.id };
+
+    if (user.role === "OWNER" && branchId && branchId !== "all") {
+      where.branchId = branchId;
+    }
+
+    return await prisma.notification.deleteMany({
+      where,
+    });
   }
 
   /**

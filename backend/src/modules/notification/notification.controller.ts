@@ -6,7 +6,8 @@ export class NotificationController {
   static async listNotifications(req: Request, res: Response, next: NextFunction) {
     try {
       if (!req.user) throw new UnauthorizedError();
-      const result = await NotificationService.listNotifications(req.user.id);
+      const branchId = req.query.branchId as string | undefined;
+      const result = await NotificationService.listNotifications(req.user, branchId);
 
       res.status(200).json({
         success: true,
@@ -42,6 +43,37 @@ export class NotificationController {
       res.status(200).json({
         success: true,
         message: "All notifications marked as read / ሁሉም ማሳወቂያዎች ተነበዋል",
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async deleteNotification(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) throw new UnauthorizedError();
+      const id = req.params.id as string;
+      const deleted = await NotificationService.deleteNotification(id, req.user);
+
+      res.status(200).json({
+        success: true,
+        message: "Notification deleted / ማሳወቂያው ተሰርዟል",
+        data: deleted,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async deleteAllNotifications(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) throw new UnauthorizedError();
+      const branchId = req.query.branchId as string | undefined;
+      await NotificationService.deleteAllNotifications(req.user, branchId);
+
+      res.status(200).json({
+        success: true,
+        message: "Notifications cleared / ማሳወቂያዎች ተሰርዘዋል",
       });
     } catch (error) {
       next(error);
