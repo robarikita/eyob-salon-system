@@ -503,15 +503,21 @@ export class AdminController {
         // 2. Apply or reject changes based on request type
         if (isApprove) {
           if (govRequest.type === "CATEGORY_CREATION" && payload?.categoryId) {
-            await tx.serviceCategory.update({
-              where: { id: payload.categoryId },
-              data: { status: "APPROVED" },
-            });
+            const existingCategory = await tx.serviceCategory.findUnique({ where: { id: payload.categoryId } });
+            if (existingCategory) {
+              await tx.serviceCategory.update({
+                where: { id: payload.categoryId },
+                data: { status: "APPROVED" },
+              });
+            }
           } else if (govRequest.type === "SERVICE_CREATION" && payload?.serviceId) {
-            await tx.service.update({
-              where: { id: payload.serviceId },
-              data: { approvalStatus: "APPROVED" },
-            });
+            const existingService = await tx.service.findUnique({ where: { id: payload.serviceId } });
+            if (existingService) {
+              await tx.service.update({
+                where: { id: payload.serviceId },
+                data: { approvalStatus: "APPROVED" },
+              });
+            }
           } else if (govRequest.type === "PRICE_UPDATE" && payload?.serviceId) {
             const rawPrice = Number(payload.proposedPrice !== undefined ? payload.proposedPrice : payload.customPrice);
             const safePrice = isNaN(rawPrice) ? 0 : Math.min(Math.max(0, rawPrice), 999999.99);
@@ -584,35 +590,70 @@ export class AdminController {
                 isActive: false,
               },
             });
-          } else if (govRequest.type === "EMPLOYEE_REGISTRATION" && payload?.employeeId) {
-            await tx.employee.update({
-              where: { id: payload.employeeId },
-              data: {
-                status: "ACTIVE",
-                isActive: true,
-              },
-            });
+          } else if (govRequest.type === "EMPLOYEE_REGISTRATION") {
+            const employeeId = payload?.employeeId || payload?.id;
+            const existingEmployee = employeeId
+              ? await tx.employee.findUnique({ where: { id: employeeId } })
+              : null;
+
+            if (existingEmployee) {
+              await tx.employee.update({
+                where: { id: existingEmployee.id },
+                data: {
+                  status: "ACTIVE",
+                  isActive: true,
+                },
+              });
+            } else {
+              await tx.employee.create({
+                data: {
+                  id: employeeId || undefined,
+                  branchId: govRequest.branchId,
+                  firstName: payload.firstName || "Specialist",
+                  lastName: payload.lastName || "Staff",
+                  phone: payload.phone || `+2519${Math.floor(10000000 + Math.random() * 90000000)}`,
+                  title: payload.title || payload.ritualTitle || "Specialist",
+                  ritualTitle: payload.ritualTitle || payload.title || "Specialist",
+                  status: "ACTIVE",
+                  isActive: true,
+                  photoUrl: payload.photoUrl || null,
+                },
+              });
+            }
           }
         } else {
           // Rejected
           if (govRequest.type === "CATEGORY_CREATION" && payload?.categoryId) {
-            await tx.serviceCategory.update({
-              where: { id: payload.categoryId },
-              data: { status: "REJECTED" },
-            });
+            const existingCategory = await tx.serviceCategory.findUnique({ where: { id: payload.categoryId } });
+            if (existingCategory) {
+              await tx.serviceCategory.update({
+                where: { id: payload.categoryId },
+                data: { status: "REJECTED" },
+              });
+            }
           } else if (govRequest.type === "SERVICE_CREATION" && payload?.serviceId) {
-            await tx.service.update({
-              where: { id: payload.serviceId },
-              data: { approvalStatus: "REJECTED" },
-            });
-          } else if (govRequest.type === "EMPLOYEE_REGISTRATION" && payload?.employeeId) {
-            await tx.employee.update({
-              where: { id: payload.employeeId },
-              data: {
-                status: "REJECTED",
-                isActive: false,
-              },
-            });
+            const existingService = await tx.service.findUnique({ where: { id: payload.serviceId } });
+            if (existingService) {
+              await tx.service.update({
+                where: { id: payload.serviceId },
+                data: { approvalStatus: "REJECTED" },
+              });
+            }
+          } else if (govRequest.type === "EMPLOYEE_REGISTRATION") {
+            const employeeId = payload?.employeeId || payload?.id;
+            const existingEmployee = employeeId
+              ? await tx.employee.findUnique({ where: { id: employeeId } })
+              : null;
+
+            if (existingEmployee) {
+              await tx.employee.update({
+                where: { id: existingEmployee.id },
+                data: {
+                  status: "REJECTED",
+                  isActive: false,
+                },
+              });
+            }
           }
         }
 
@@ -639,13 +680,18 @@ export class AdminController {
         notifMessage = isApprove
           ? `Your deactivation request for ${serviceName} at ${govRequest.branch.name} was approved.`
           : `Your deactivation request for ${serviceName} was declined: ${reviewNote || govRequest.reason}`;
-      } else if (govRequest.type === "EMPLOYEE_REGISTRATION" && payload?.employeeId) {
-        const targetEmp = await prisma.employee.findUnique({ where: { id: payload.employeeId } });
-        const empName = targetEmp ? `${targetEmp.firstName} ${targetEmp.lastName}` : "Specialist";
+      } else if (govRequest.type === "EMPLOYEE_REGISTRATION") {
+        const employeeId = payload?.employeeId || payload?.id;
+        const targetEmp = employeeId ? await prisma.employee.findUnique({ where: { id: employeeId } }) : null;
+        const empName = targetEmp
+          ? `${targetEmp.firstName} ${targetEmp.lastName}`
+          : payload.firstName
+          ? `${payload.firstName} ${payload.lastName || ""}`.trim()
+          : "Specialist";
         notifTitle = isApprove ? "Registration Approved / ቅጥር ጸድቋል" : "Registration Declined / ቅጥር ውድቅ ተደርጓል";
         notifMessage = isApprove
-          ? `Employee proposal for ${empName} was approved by Owner.`
-          : `Employee proposal for ${empName} was rejected: ${reviewNote || govRequest.reason || "Declined"}`;
+          ? `${empName} is now active.`
+          : `Request for ${empName} was declined: ${reviewNote || govRequest.reason || "No reason provided"}`;
       }
 
       await NotificationService.createNotification({
