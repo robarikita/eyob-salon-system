@@ -2,9 +2,12 @@ import React, { useState, useEffect } from 'react';
 import AdminLayout from '../../../components/admin/AdminLayout';
 import { serviceApi, GovernanceRequestItem } from '../../../api/serviceApi';
 import { useAuth } from '../../../context/AuthContext';
+import { useBranchFilter } from '../../../context/BranchFilterContext';
+import { formatDateTime } from '../../../utils/formatDate';
 
 export const GovernanceApprovalPage: React.FC = () => {
   const { user } = useAuth();
+  const { effectiveBranchId } = useBranchFilter();
   const [requests, setRequests] = useState<GovernanceRequestItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [filterStatus, setFilterStatus] = useState<string>('PENDING');
@@ -15,7 +18,7 @@ export const GovernanceApprovalPage: React.FC = () => {
   const fetchRequests = async () => {
     setLoading(true);
     try {
-      const data = await serviceApi.getGovernanceRequests(filterStatus);
+      const data = await serviceApi.getGovernanceRequests(filterStatus, effectiveBranchId);
       setRequests(data || []);
     } catch (err: any) {
       console.error('Failed to load governance requests:', err);
@@ -26,7 +29,7 @@ export const GovernanceApprovalPage: React.FC = () => {
 
   useEffect(() => {
     fetchRequests();
-  }, [filterStatus]);
+  }, [filterStatus, effectiveBranchId]);
 
   const handleReview = async (id: string, decision: 'APPROVE' | 'REJECT') => {
     setProcessingId(id);
@@ -169,8 +172,13 @@ export const GovernanceApprovalPage: React.FC = () => {
                       </span>
                     </div>
 
-                    <div className="text-[11px] text-stone-400">
-                      {new Date(req.createdAt).toLocaleDateString()} • {new Date(req.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    <div className="text-[11px] text-stone-400 text-right">
+                      <div>{formatDateTime(req.createdAt)}</div>
+                      {req.updatedAt && req.updatedAt !== req.createdAt && (
+                        <div className="text-[9px] text-stone-500">
+                          Updated: {formatDateTime(req.updatedAt)}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -261,6 +269,18 @@ export const GovernanceApprovalPage: React.FC = () => {
                             <div><span className="text-stone-400 font-sans">Ritual:</span> {p.name} ({p.code})</div>
                             <div><span className="text-stone-400 font-sans">Category:</span> {p.category}</div>
                             <div className="text-[#D4AF37]"><span className="text-stone-400 font-sans">Price:</span> {p.basePrice} ETB ({p.durationMinutes}m)</div>
+                          </div>
+                        )}
+                        {req.type === 'EMPLOYEE_REGISTRATION' && (
+                          <div className="space-y-1 text-stone-300">
+                            <div><span className="text-stone-400 font-sans">Specialist:</span> {p.firstName} {p.lastName}</div>
+                            {p.phone && <div><span className="text-stone-400 font-sans">Phone:</span> {p.phone}</div>}
+                            {(p.ritualTitle || p.title) && (
+                              <div><span className="text-stone-400 font-sans">Title:</span> {p.ritualTitle || p.title}</div>
+                            )}
+                            {p.hireReason && (
+                              <div><span className="text-stone-400 font-sans">Hire Reason:</span> {p.hireReason}</div>
+                            )}
                           </div>
                         )}
                       </div>
