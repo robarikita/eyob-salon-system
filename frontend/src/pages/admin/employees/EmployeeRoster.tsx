@@ -283,13 +283,25 @@ export const EmployeeRoster: React.FC = () => {
                             <button
                               type="button"
                               onClick={(e) => handleToggleStatus(emp.id, e)}
+                              disabled={isPend || isRej}
                               className={`px-2 py-1 rounded text-[11px] font-semibold transition ${
-                                isAct
+                                isPend || isRej
+                                  ? 'border border-stone-800 text-stone-600 bg-stone-900/50 cursor-not-allowed opacity-50'
+                                  : isAct
                                   ? 'border border-red-900/50 text-red-400 hover:bg-red-950/40'
                                   : 'border border-emerald-900/50 text-emerald-400 hover:bg-emerald-950/40'
                               }`}
+                              title={isPend ? 'Pending Approval / በመጠባበቅ ላይ' : isRej ? 'Rejected / ውድቅ የተደረገ' : isAct ? 'Deactivate' : 'Activate'}
                             >
-                              {isAct
+                              {isPend
+                                ? isAm
+                                  ? 'በመጠባበቅ'
+                                  : 'Pending'
+                                : isRej
+                                ? isAm
+                                  ? 'ውድቅ'
+                                  : 'Rejected'
+                                : isAct
                                 ? isAm
                                   ? 'አቦዝን'
                                   : 'Deactivate'

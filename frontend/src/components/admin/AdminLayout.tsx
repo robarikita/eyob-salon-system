@@ -361,7 +361,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
             type="button"
             onClick={() => {
               logout();
-              navigate('/admin/login');
+              navigate('/login');
             }}
             className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-error hover:bg-error/10 border border-error/20 transition-colors text-sm font-semibold"
           >
@@ -569,7 +569,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
               type="button"
               onClick={() => {
                 logout();
-                navigate('/admin/login');
+                navigate('/login');
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container text-error border border-error/20 text-xs font-semibold transition-colors"
               title="Sign Out / ውጣ"

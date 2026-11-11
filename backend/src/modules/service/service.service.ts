@@ -131,11 +131,57 @@ export class ServiceRitualService {
     },
     currentUser?: CurrentUser
   ) {
-    const isElevated = currentUser?.role === "OWNER" || currentUser?.role === "BRANCH_ADMIN";
+    const isOwner = currentUser?.role === "OWNER";
+    const isBranchAdmin = currentUser?.role === "BRANCH_ADMIN";
+    const adminBranchId = isBranchAdmin ? (currentUser.branchId || undefined) : undefined;
+    const isElevated = isOwner || isBranchAdmin;
     const conditions: any[] = [];
 
-    // Customer/Guest Isolation or Active Catalog Query: Strictly active & approved (including category status & branch exceptions)
-    if (!isElevated || filter.status === "active") {
+    // Branch Admin strict branch scoping: only services available at their branch
+    if (isBranchAdmin && adminBranchId) {
+      // 1. Exclude services specific to other branches
+      conditions.push({
+        OR: [
+          { branchId: null },
+          { branchId: adminBranchId },
+        ],
+      });
+
+      // 2. Exclude categories specific to other branches
+      conditions.push({
+        OR: [
+          { serviceCategory: null },
+          { serviceCategory: { OR: [{ branchId: null }, { branchId: adminBranchId }] } },
+        ],
+      });
+
+      // 3. Status filter scoping for branch
+      if (filter.status === "inactive") {
+        conditions.push({
+          OR: [
+            { isActive: false },
+            { branchPrices: { some: { branchId: adminBranchId, isActive: false } } },
+            { branchServices: { some: { branchId: adminBranchId, isActive: false } } },
+          ],
+        });
+      } else {
+        // active or default: strictly available at this branch
+        conditions.push({ isActive: true });
+        conditions.push({
+          NOT: {
+            OR: [
+              { branchPrices: { some: { branchId: adminBranchId, isActive: false } } },
+              { branchServices: { some: { branchId: adminBranchId, isActive: false } } },
+            ],
+          },
+        });
+      }
+
+      if (filter.approvalStatus && filter.approvalStatus !== "all") {
+        conditions.push({ approvalStatus: filter.approvalStatus });
+      }
+    } else if (!isElevated || filter.status === "active") {
+      // Customer/Guest Isolation or Active Catalog Query: Strictly active & approved (including category status & branch exceptions)
       conditions.push({ isActive: true });
       conditions.push({ approvalStatus: "APPROVED" });
 
@@ -174,7 +220,7 @@ export class ServiceRitualService {
         });
       }
     } else {
-      // Status filter
+      // Elevated Owner view: status filter
       if (filter.status === "inactive") {
         conditions.push({ isActive: false });
       }
@@ -264,6 +310,10 @@ export class ServiceRitualService {
       orderBy: { name: "asc" },
     });
 
+    const matrixBranches = isBranchAdmin && adminBranchId
+      ? allActiveBranches.filter((b) => b.id === adminBranchId)
+      : allActiveBranches;
+
     // Fetch branch defaults if branch context is present
     let targetBranch: { defaultDepositType: DepositType; defaultDepositValue: any } | null = null;
     if (targetBranchId) {
@@ -274,8 +324,8 @@ export class ServiceRitualService {
     }
 
     return services.map((s) => {
-      // Build full cross-branch pricing matrix
-      const branchPricings = allActiveBranches.map((b) => {
+      // Build cross-branch pricing matrix (scoped strictly to admin branch for Branch Admin)
+      const branchPricings = matrixBranches.map((b) => {
         const bp = s.branchPrices.find((p) => p.branchId === b.id || p.branch?.slug === b.slug);
         const bs = s.branchServices.find((r) => r.branchId === b.id || r.branch?.slug === b.slug);
         const isBranchActive = s.isActive && (bp ? bp.isActive !== false : true) && (bs ? bs.isActive !== false : true);
@@ -317,9 +367,11 @@ export class ServiceRitualService {
         ? (selectedBranchPricing ? selectedBranchPricing.isActive : false)
         : s.isActive;
 
-      const alternateBranches = branchPricings.filter(
-        (bp) => bp.isActive && (targetBranchId ? bp.branchId !== targetBranchId && bp.branchSlug !== targetBranchId : true)
-      );
+      const alternateBranches = (isBranchAdmin && adminBranchId)
+        ? []
+        : branchPricings.filter(
+            (bp) => bp.isActive && (targetBranchId ? bp.branchId !== targetBranchId && bp.branchSlug !== targetBranchId : true)
+          );
 
       // Find matching branch override
       const branchPrice = targetBranchId
@@ -381,14 +433,26 @@ export class ServiceRitualService {
         ? s.isActive && branchRule.isActive
         : s.isActive;
 
-      // Extract assigned specialists
-      const assignedSpecialists = s.employees.map((es) => ({
+      // Extract assigned specialists (scoped to admin branch for Branch Admin)
+      const eligibleEmployees = (isBranchAdmin && adminBranchId)
+        ? s.employees.filter((es) => es.employee.branchId === adminBranchId)
+        : s.employees;
+
+      const assignedSpecialists = eligibleEmployees.map((es) => ({
         id: es.employee.id,
         name: `${es.employee.firstName} ${es.employee.lastName}`,
         ritualTitle: es.employee.ritualTitle,
         branchId: es.employee.branchId,
         isActive: es.employee.status,
       }));
+
+      const scopedBranchPrices = (isBranchAdmin && adminBranchId)
+        ? s.branchPrices.filter((bp) => bp.branchId === adminBranchId)
+        : s.branchPrices;
+
+      const scopedBranchServices = (isBranchAdmin && adminBranchId)
+        ? s.branchServices.filter((bs) => bs.branchId === adminBranchId)
+        : s.branchServices;
 
       return {
         id: s.id,
@@ -429,17 +493,21 @@ export class ServiceRitualService {
         effectiveDeposit,
         isActive: s.isActive,
         effectiveActive,
-        isUniformPrice,
-        minPrice,
-        maxPrice,
+        isUniformPrice: (isBranchAdmin && adminBranchId) ? true : isUniformPrice,
+        minPrice: (isBranchAdmin && adminBranchId) ? effectivePrice : minPrice,
+        maxPrice: (isBranchAdmin && adminBranchId) ? effectivePrice : maxPrice,
         branchPricings,
-        activeBranchIds,
-        activeBranchNames,
+        activeBranchIds: (isBranchAdmin && adminBranchId)
+          ? (isAvailableAtSelectedBranch ? [adminBranchId] : [])
+          : activeBranchIds,
+        activeBranchNames: (isBranchAdmin && adminBranchId)
+          ? (isAvailableAtSelectedBranch && selectedBranchPricing ? [selectedBranchPricing.branchName] : [])
+          : activeBranchNames,
         available: isAvailableAtSelectedBranch,
         isAvailable: isAvailableAtSelectedBranch,
         isAvailableAtSelectedBranch,
         alternateBranches,
-        branchPrices: s.branchPrices.map((bp) => ({
+        branchPrices: scopedBranchPrices.map((bp) => ({
           id: bp.id,
           branchId: bp.branchId,
           branchName: bp.branch?.name,
@@ -450,7 +518,7 @@ export class ServiceRitualService {
           depositValue: bp.depositValue !== null ? Number(bp.depositValue) : null,
           isActive: bp.isActive,
         })),
-        branchServices: s.branchServices.map((bs) => ({
+        branchServices: scopedBranchServices.map((bs) => ({
           id: bs.id,
           branchId: bs.branchId,
           branchName: bs.branch.name,
@@ -481,7 +549,7 @@ export class ServiceRitualService {
       },
       include: {
         serviceCategory: {
-          select: { id: true, name: true, nameAm: true, slug: true, status: true },
+          select: { id: true, name: true, nameAm: true, slug: true, status: true, branchId: true },
         },
         branchPrices: {
           include: {
@@ -513,9 +581,21 @@ export class ServiceRitualService {
       throw new NotFoundError("Service ritual not found.");
     }
 
+    const isBranchAdmin = currentUser?.role === "BRANCH_ADMIN";
+    const adminBranchId = isBranchAdmin ? currentUser.branchId : null;
+
+    if (isBranchAdmin && adminBranchId) {
+      if (service.branchId && service.branchId !== adminBranchId) {
+        throw new NotFoundError("Service ritual not found.");
+      }
+      if (service.serviceCategory?.branchId && service.serviceCategory.branchId !== adminBranchId) {
+        throw new NotFoundError("Service ritual not found.");
+      }
+    }
+
     let targetBranchId = branchContextId;
-    if (currentUser?.role === "BRANCH_ADMIN") {
-      targetBranchId = currentUser.branchId || undefined;
+    if (isBranchAdmin) {
+      targetBranchId = adminBranchId || undefined;
     }
 
     const branchPrice = targetBranchId
@@ -554,7 +634,11 @@ export class ServiceRitualService {
       orderBy: { name: "asc" },
     });
 
-    const branchPricings = allActiveBranches.map((b) => {
+    const matrixBranches = isBranchAdmin && adminBranchId
+      ? allActiveBranches.filter((b) => b.id === adminBranchId)
+      : allActiveBranches;
+
+    const branchPricings = matrixBranches.map((b) => {
       const bp = service.branchPrices.find((p) => p.branchId === b.id || p.branch?.slug === b.slug);
       const bs = service.branchServices.find((r) => r.branchId === b.id || r.branch?.slug === b.slug);
       const isBranchActive = service.isActive && (bp ? bp.isActive !== false : true) && (bs ? bs.isActive !== false : true);
@@ -596,9 +680,11 @@ export class ServiceRitualService {
       ? (selectedBranchPricing ? selectedBranchPricing.isActive : false)
       : service.isActive;
 
-    const alternateBranches = branchPricings.filter(
-      (bp) => bp.isActive && (targetBranchId ? bp.branchId !== targetBranchId && bp.branchSlug !== targetBranchId : true)
-    );
+    const alternateBranches = (isBranchAdmin && adminBranchId)
+      ? []
+      : branchPricings.filter(
+          (bp) => bp.isActive && (targetBranchId ? bp.branchId !== targetBranchId && bp.branchSlug !== targetBranchId : true)
+        );
 
     let effectiveDeposit = Number(service.depositAmount || 0);
     if (branchPrice && branchPrice.depositType) {
@@ -661,17 +747,24 @@ export class ServiceRitualService {
       effectiveDeposit,
       isActive: service.isActive,
       effectiveActive: branchPrice ? service.isActive && branchPrice.isActive : branchRule ? service.isActive && branchRule.isActive : service.isActive,
-      isUniformPrice,
-      minPrice,
-      maxPrice,
+      isUniformPrice: (isBranchAdmin && adminBranchId) ? true : isUniformPrice,
+      minPrice: (isBranchAdmin && adminBranchId) ? effectivePrice : minPrice,
+      maxPrice: (isBranchAdmin && adminBranchId) ? effectivePrice : maxPrice,
       branchPricings,
-      activeBranchIds,
-      activeBranchNames,
+      activeBranchIds: (isBranchAdmin && adminBranchId)
+        ? (isAvailableAtSelectedBranch ? [adminBranchId] : [])
+        : activeBranchIds,
+      activeBranchNames: (isBranchAdmin && adminBranchId)
+        ? (isAvailableAtSelectedBranch && selectedBranchPricing ? [selectedBranchPricing.branchName] : [])
+        : activeBranchNames,
       available: isAvailableAtSelectedBranch,
       isAvailable: isAvailableAtSelectedBranch,
       isAvailableAtSelectedBranch,
       alternateBranches,
-      branchPrices: service.branchPrices.map((bp) => ({
+      branchPrices: (isBranchAdmin && adminBranchId
+        ? service.branchPrices.filter((bp) => bp.branchId === adminBranchId)
+        : service.branchPrices
+      ).map((bp) => ({
         id: bp.id,
         branchId: bp.branchId,
         branchName: bp.branch?.name,
@@ -682,7 +775,10 @@ export class ServiceRitualService {
         depositValue: bp.depositValue !== null ? Number(bp.depositValue) : null,
         isActive: bp.isActive,
       })),
-      branchServices: service.branchServices.map((bs) => ({
+      branchServices: (isBranchAdmin && adminBranchId
+        ? service.branchServices.filter((bs) => bs.branchId === adminBranchId)
+        : service.branchServices
+      ).map((bs) => ({
         id: bs.id,
         branchId: bs.branchId,
         branchName: bs.branch.name,
@@ -695,7 +791,10 @@ export class ServiceRitualService {
         workstationLock: bs.workstationLock,
         isActive: bs.isActive,
       })),
-      assignedSpecialists: service.employees.map((es) => ({
+      assignedSpecialists: (isBranchAdmin && adminBranchId
+        ? service.employees.filter((es) => es.employee.branchId === adminBranchId)
+        : service.employees
+      ).map((es) => ({
         id: es.employee.id,
         name: `${es.employee.firstName} ${es.employee.lastName}`,
         amharicName: es.employee.amharicName,
@@ -1469,15 +1568,31 @@ export class ServiceRitualService {
    */
   static async getCategories(_branchIdOrSlug?: string, currentUser?: CurrentUser) {
     const isElevated = currentUser?.role === "OWNER" || currentUser?.role === "BRANCH_ADMIN";
+    const isBranchAdmin = currentUser?.role === "BRANCH_ADMIN";
+    const adminBranchId = isBranchAdmin ? currentUser.branchId : null;
     const where: any = {};
 
     if (!isElevated) {
       where.status = "APPROVED";
       where.isActive = true;
-    } else if (currentUser?.role === "BRANCH_ADMIN") {
-      where.OR = [
-        { status: "APPROVED" },
-        { branchId: currentUser.branchId },
+      if (_branchIdOrSlug) {
+        where.OR = [
+          { branchId: null },
+          { branch: { OR: [{ id: _branchIdOrSlug }, { slug: _branchIdOrSlug }] } },
+        ];
+      }
+    } else if (isBranchAdmin && adminBranchId) {
+      where.AND = [
+        {
+          OR: [{ branchId: null }, { branchId: adminBranchId }],
+        },
+        {
+          OR: [
+            { status: "APPROVED" },
+            { requestedBy: currentUser.id },
+            { branchId: adminBranchId },
+          ],
+        },
       ];
     }
 
@@ -1485,7 +1600,19 @@ export class ServiceRitualService {
       where,
       include: {
         services: {
-          where: isElevated ? undefined : { isActive: true, approvalStatus: "APPROVED" },
+          where: isBranchAdmin && adminBranchId
+            ? {
+                OR: [{ branchId: null }, { branchId: adminBranchId }],
+                NOT: {
+                  OR: [
+                    { branchPrices: { some: { branchId: adminBranchId, isActive: false } } },
+                    { branchServices: { some: { branchId: adminBranchId, isActive: false } } },
+                  ],
+                },
+              }
+            : isElevated
+            ? undefined
+            : { isActive: true, approvalStatus: "APPROVED" },
           select: { id: true, isActive: true, approvalStatus: true },
         },
       },

@@ -33,11 +33,6 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     if (!fallback) {
       if (allowedRoles && allowedRoles.length === 1 && allowedRoles[0] === 'EMPLOYEE') {
         fallback = '/staff/login';
-      } else if (
-        allowedRoles &&
-        allowedRoles.every((r) => r === 'BRANCH_ADMIN' || r === 'OWNER')
-      ) {
-        fallback = '/admin/login';
       } else {
         fallback = '/login';
       }

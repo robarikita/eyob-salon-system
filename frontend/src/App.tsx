@@ -12,7 +12,6 @@ import RegisterPage from './pages/auth/RegisterPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 import StaffLoginPage from './pages/auth/StaffLoginPage';
-import AdminLoginPage from './pages/auth/AdminLoginPage';
 import CustomerProfilePage from './pages/customer/CustomerProfilePage';
 
 // Phase 4: Employee & Operations Management Pages
@@ -62,7 +61,7 @@ export const App: React.FC = () => {
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/staff/login" element={<StaffLoginPage />} />
-            <Route path="/admin/login" element={<AdminLoginPage />} />
+            <Route path="/admin/login" element={<Navigate to="/login" replace />} />
 
             {/* Customer Booking Funnel (Public & Authenticated) */}
             <Route path="/book" element={<BookAppointmentPage />} />

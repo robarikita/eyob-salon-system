@@ -23,11 +23,19 @@ export const ServiceCatalogPage: React.FC = () => {
   const [categoriesList, setCategoriesList] = useState<ServiceCategoryItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [selectedBranch, setSelectedBranch] = useState<string>('all');
+  const [selectedBranch, setSelectedBranch] = useState<string>(isBranchAdmin && user?.branchId ? user.branchId : 'all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [notification, setNotification] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isBranchAdmin && user?.branchId) {
+      setSelectedBranch(user.branchId);
+    }
+  }, [isBranchAdmin, user?.branchId]);
+
+  const activeBranchId = isBranchAdmin && user?.branchId ? user.branchId : (selectedBranch === 'all' ? undefined : selectedBranch);
 
   // Category Modal State (Create)
   const [categoryModalOpen, setCategoryModalOpen] = useState<boolean>(false);
@@ -72,9 +80,7 @@ export const ServiceCatalogPage: React.FC = () => {
 
   const loadCategories = async () => {
     try {
-      const data = await serviceApi.getCategories(
-        selectedBranch === 'all' ? undefined : selectedBranch
-      );
+      const data = await serviceApi.getCategories(activeBranchId);
       setCategoriesList(data || []);
       if (!formCategory && data && data.length > 0) {
         setFormCategory(data[0].name);
@@ -95,7 +101,7 @@ export const ServiceCatalogPage: React.FC = () => {
     }
     loadBranches();
     loadCategories();
-  }, []);
+  }, [activeBranchId]);
 
   const fetchServices = async () => {
     setLoading(true);
@@ -103,7 +109,7 @@ export const ServiceCatalogPage: React.FC = () => {
       const data = await serviceApi.listServices({
         search: searchQuery || undefined,
         category: selectedCategory === 'All' ? undefined : selectedCategory,
-        branchId: selectedBranch === 'all' ? undefined : selectedBranch,
+        branchId: activeBranchId,
         status: selectedStatus,
       });
       setServices(data || []);
@@ -116,7 +122,7 @@ export const ServiceCatalogPage: React.FC = () => {
 
   useEffect(() => {
     fetchServices();
-  }, [searchQuery, selectedBranch, selectedStatus, selectedCategory]);
+  }, [searchQuery, activeBranchId, selectedStatus, selectedCategory]);
 
   const handleToggleStatus = async (id: string, name: string) => {
     try {
@@ -383,13 +389,15 @@ export const ServiceCatalogPage: React.FC = () => {
               <span className="material-symbols-outlined text-[16px] text-[#D4AF37]">category</span>
               <span>+ Category / አዲስ ምድብ</span>
             </button>
-            <Link
-              to="/admin/services/pricing"
-              className="px-3.5 py-2 rounded-lg bg-[#181412] hover:bg-[#2C2724] text-xs font-semibold uppercase tracking-wider text-stone-300 border border-[#2C2724] transition flex items-center gap-1.5"
-            >
-              <span className="material-symbols-outlined text-[16px] text-[#D4AF37]">payments</span>
-              <span>Pricing / ዋጋዎች</span>
-            </Link>
+            {!isBranchAdmin && (
+              <Link
+                to="/admin/services/pricing"
+                className="px-3.5 py-2 rounded-lg bg-[#181412] hover:bg-[#2C2724] text-xs font-semibold uppercase tracking-wider text-stone-300 border border-[#2C2724] transition flex items-center gap-1.5"
+              >
+                <span className="material-symbols-outlined text-[16px] text-[#D4AF37]">payments</span>
+                <span>Pricing / ዋጋዎች</span>
+              </Link>
+            )}
             <button
               type="button"
               onClick={openCreateModal}
@@ -470,18 +478,20 @@ export const ServiceCatalogPage: React.FC = () => {
 
               <div className="flex items-center gap-2 flex-wrap">
                 {/* Branch Filter */}
-                <select
-                  value={selectedBranch}
-                  onChange={(e) => setSelectedBranch(e.target.value)}
-                  className="h-10 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] font-semibold uppercase tracking-wider border border-[#2C2724] focus:outline-none focus:border-[#D4AF37] cursor-pointer"
-                >
-                  <option value="all">All Branches / ሁሉም</option>
-                  {branches.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
+                {!isBranchAdmin && (
+                  <select
+                    value={selectedBranch}
+                    onChange={(e) => setSelectedBranch(e.target.value)}
+                    className="h-10 px-3 rounded-lg bg-[#0E0B09] text-xs text-[#FAF7F2] font-semibold uppercase tracking-wider border border-[#2C2724] focus:outline-none focus:border-[#D4AF37] cursor-pointer"
+                  >
+                    <option value="all">All Branches / ሁሉም</option>
+                    {branches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
 
                 {/* Status Filter */}
                 <select
@@ -695,13 +705,15 @@ export const ServiceCatalogPage: React.FC = () => {
                           >
                             {isActive ? 'Deactivate' : 'Activate'}
                           </button>
-                          <Link
-                            to={`/admin/services/pricing?serviceId=${s.id}`}
-                            className="p-1.5 rounded bg-[#2C2724] hover:bg-[#38322e] text-[#D4AF37]"
-                            title="Branch Pricing / ዋጋዎች"
-                          >
-                            <span className="material-symbols-outlined text-[16px]">payments</span>
-                          </Link>
+                          {!isBranchAdmin && (
+                            <Link
+                              to={`/admin/services/pricing?serviceId=${s.id}`}
+                              className="p-1.5 rounded bg-[#2C2724] hover:bg-[#38322e] text-[#D4AF37]"
+                              title="Branch Pricing / ዋጋዎች"
+                            >
+                              <span className="material-symbols-outlined text-[16px]">payments</span>
+                            </Link>
+                          )}
                           <button
                             type="button"
                             onClick={() => setServiceToDelete(s)}

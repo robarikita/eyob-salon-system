@@ -282,17 +282,29 @@ export const EmployeeProfile: React.FC = () => {
             <button
               type="button"
               onClick={handleToggleStatus}
+              disabled={isPend || isRej}
               className={`px-3.5 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-                isAct
+                isPend || isRej
+                  ? 'border border-stone-800 text-stone-600 bg-stone-900/50 cursor-not-allowed opacity-50'
+                  : isAct
                   ? 'border border-red-900/60 text-red-400 hover:bg-red-950/40'
                   : 'border border-emerald-900/60 text-emerald-400 hover:bg-emerald-950/40'
               }`}
+              title={isPend ? 'Pending Approval / በመጠባበቅ ላይ' : isRej ? 'Rejected / ውድቅ የተደረገ' : isAct ? 'Deactivate' : 'Activate'}
             >
               <span className="material-symbols-outlined text-sm">
-                {isAct ? 'block' : 'check_circle'}
+                {isPend ? 'hourglass_empty' : isRej ? 'cancel' : isAct ? 'block' : 'check_circle'}
               </span>
               <span>
-                {isAct
+                {isPend
+                  ? isAm
+                    ? 'በመጠባበቅ'
+                    : 'Pending'
+                  : isRej
+                  ? isAm
+                    ? 'ውድቅ'
+                    : 'Rejected'
+                  : isAct
                   ? isAm
                     ? 'አቦዝን'
                     : 'Deactivate'

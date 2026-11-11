@@ -454,17 +454,24 @@ export class EmployeeService {
     if (data.commissionRate !== undefined) {
       updateData.commissionRate = data.commissionRate;
     }
-    if (data.status !== undefined) {
-      if (typeof data.status === "boolean") {
-        updateData.status = data.status ? "ACTIVE" : "INACTIVE";
-        updateData.isActive = data.status;
-      } else {
-        updateData.status = data.status;
-        updateData.isActive = data.status === "ACTIVE";
+    if (data.status !== undefined || data.isActive !== undefined) {
+      if (existing.status === "PENDING_APPROVAL" || existing.status === "REJECTED") {
+        throw new ForbiddenError(
+          "Cannot change status while approval is pending or rejected / ባለቤቱ ሳያፀድቅ ሁኔታ መቀየር አይቻልም"
+        );
       }
-    } else if (data.isActive !== undefined) {
-      updateData.status = data.isActive ? "ACTIVE" : "INACTIVE";
-      updateData.isActive = data.isActive;
+      if (data.status !== undefined) {
+        if (typeof data.status === "boolean") {
+          updateData.status = data.status ? "ACTIVE" : "INACTIVE";
+          updateData.isActive = data.status;
+        } else {
+          updateData.status = data.status;
+          updateData.isActive = data.status === "ACTIVE";
+        }
+      } else if (data.isActive !== undefined) {
+        updateData.status = data.isActive ? "ACTIVE" : "INACTIVE";
+        updateData.isActive = data.isActive;
+      }
     }
 
     const updatedEmployee = await prisma.employee.update({
@@ -501,6 +508,12 @@ export class EmployeeService {
     }
 
     this.checkBranchAccess(currentUser, employee.branchId);
+
+    if (employee.status === "PENDING_APPROVAL" || employee.status === "REJECTED") {
+      throw new ForbiddenError(
+        "Cannot change status while approval is pending or rejected / ባለቤቱ ሳያፀድቅ ሁኔታ መቀየር አይቻልም"
+      );
+    }
 
     const isCurrentlyActive = employee.status === "ACTIVE" && employee.isActive;
     const nextStatus = isCurrentlyActive ? "INACTIVE" : "ACTIVE";
@@ -570,13 +583,24 @@ export class EmployeeService {
         throw new NotFoundError("One or more assigned services were not found in the catalog.");
       }
 
-      const branchServices = await prisma.branchService.findMany({
-        where: {
-          serviceId: { in: serviceIds },
-          branchId: employee.branchId,
-        },
-      });
-      const validBranchServiceIds = new Set(branchServices.map((bs) => bs.serviceId));
+      const [branchServices, branchPrices] = await Promise.all([
+        prisma.branchService.findMany({
+          where: {
+            serviceId: { in: serviceIds },
+            branchId: employee.branchId,
+          },
+        }),
+        prisma.branchServicePrice.findMany({
+          where: {
+            serviceId: { in: serviceIds },
+            branchId: employee.branchId,
+          },
+        }),
+      ]);
+      const validBranchServiceIds = new Set([
+        ...branchServices.map((bs) => bs.serviceId),
+        ...branchPrices.map((bp) => bp.serviceId),
+      ]);
 
       for (const service of services) {
         const isBranchMatch = service.branchId === employee.branchId;
@@ -591,6 +615,10 @@ export class EmployeeService {
       }
     }
 
+    const uniqueRawServices = Array.from(
+      new Map(rawServices.map((item) => [item.serviceId, item])).values()
+    );
+
     return prisma.$transaction(async (tx) => {
       // Remove current services
       await tx.employeeService.deleteMany({
@@ -598,9 +626,9 @@ export class EmployeeService {
       });
 
       // Insert new services with isQualified: true
-      if (rawServices.length > 0) {
+      if (uniqueRawServices.length > 0) {
         await tx.employeeService.createMany({
-          data: rawServices.map((item) => ({
+          data: uniqueRawServices.map((item) => ({
             employeeId: id,
             serviceId: item.serviceId,
             isQualified: true,
