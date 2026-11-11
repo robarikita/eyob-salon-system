@@ -520,5 +520,6 @@ model Notification {
   link      String?  // Target URL e.g. /admin/services or /admin/governance
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 }
 
