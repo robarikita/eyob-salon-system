@@ -258,6 +258,15 @@ export const EmployeeRoster: React.FC = () => {
                           <div className="inline-flex items-center gap-1.5">
                             <button
                               type="button"
+                              onClick={() => navigate(`/admin/employees/${emp.id}`)}
+                              className="px-2 py-1 rounded bg-[#0E0B09] border border-[#2C2724] hover:border-[#D4AF37] text-[11px] text-stone-300 hover:text-[#D4AF37] transition"
+                              title="Edit Specialist / አድስ"
+                            >
+                              {isAm ? 'አድስ' : 'Edit'}
+                            </button>
+
+                            <button
+                              type="button"
                               onClick={() => navigate(`/admin/employees/${emp.id}/services`)}
                               className="px-2 py-1 rounded bg-[#0E0B09] border border-[#2C2724] hover:border-[#D4AF37] text-[11px] text-stone-300 hover:text-[#D4AF37] transition"
                               title="Assign Skills"

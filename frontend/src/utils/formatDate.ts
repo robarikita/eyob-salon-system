@@ -31,3 +31,4 @@ export function formatRelativeTime(dateStr?: string | Date | null): string {
 
   return formatDateTime(date);
 }
+

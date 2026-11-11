@@ -25,6 +25,7 @@ export const AddEmployeePage: React.FC = () => {
   const [hireReason, setHireReason] = useState('');
   const [createAccount, setCreateAccount] = useState(false);
   const [password, setPassword] = useState('EyobSanctuary#2025!');
+  const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -265,7 +266,7 @@ export const AddEmployeePage: React.FC = () => {
             </div>
           )}
 
-          {/* Portal Access Toggle */}
+          {/* Portal Access Toggle & Credentials */}
           <div className="pt-2 border-t border-[#2C2724]">
             <div className="flex items-center justify-between">
               <div>
@@ -285,16 +286,50 @@ export const AddEmployeePage: React.FC = () => {
             </div>
 
             {createAccount && (
-              <div className="mt-3">
-                <label className="block text-xs font-semibold text-stone-300 mb-1">
-                  {isAm ? 'የይለፍ ቃል' : 'Temporary Password'}
-                </label>
-                <input
-                  type="text"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-[#0E0B09] border border-[#2C2724] rounded-lg px-3 py-2 text-xs text-[#FAF7F2] font-mono outline-none focus:border-[#D4AF37]"
-                />
+              <div className="mt-4 p-3.5 bg-[#0E0B09] border border-[#2C2724] rounded-xl space-y-3">
+                <div className="text-[11px] font-bold text-[#D4AF37] uppercase tracking-wider">
+                  {isAm ? 'የመግቢያ መረጃ' : 'Account Credentials'}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-stone-300 mb-1">
+                      {isAm ? 'ኢሜይል *' : 'Email *'}
+                    </label>
+                    <input
+                      type="email"
+                      required={createAccount}
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="specialist@eyobbeauty.com"
+                      className="w-full bg-[#181412] border border-[#2C2724] rounded-lg px-3 py-2 text-xs text-[#FAF7F2] outline-none focus:border-[#D4AF37]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-stone-300 mb-1">
+                      {isAm ? 'የይለፍ ቃል *' : 'Password *'}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        required={createAccount}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full bg-[#181412] border border-[#2C2724] rounded-lg px-3 py-2 pr-10 text-xs text-[#FAF7F2] font-mono outline-none focus:border-[#D4AF37]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-[#D4AF37]"
+                        title={showPassword ? 'Hide' : 'Show'}
+                      >
+                        <span className="material-symbols-outlined text-[16px]">
+                          {showPassword ? 'visibility_off' : 'visibility'}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>

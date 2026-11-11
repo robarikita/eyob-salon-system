@@ -483,6 +483,82 @@ export class EmployeeService {
       },
     });
 
+    // Handle linked User account update or new account provisioning
+    const emailVal = data.email !== undefined && data.email !== null ? data.email.trim() : null;
+    const passwordVal = data.password !== undefined && data.password !== null ? data.password.trim() : null;
+
+    if (existing.userId) {
+      const userUpdate: any = {};
+      if (emailVal && emailVal !== existing.email) {
+        const emailConflict = await prisma.user.findFirst({
+          where: { email: emailVal, id: { not: existing.userId } },
+        });
+        if (emailConflict) {
+          throw new ValidationError(`A user account with email ${emailVal} already exists.`);
+        }
+        userUpdate.email = emailVal;
+      }
+      if (passwordVal && passwordVal.length >= 6) {
+        userUpdate.password = await hashPassword(passwordVal);
+      }
+      if (Object.keys(userUpdate).length > 0) {
+        await prisma.user.update({
+          where: { id: existing.userId },
+          data: userUpdate,
+        });
+      }
+    } else if (emailVal && passwordVal && passwordVal.length >= 6) {
+      const empPhone = updatedEmployee.phone || data.phone;
+      if (!empPhone) {
+        throw new ValidationError("Phone number is required to create a user account.");
+      }
+
+      const existingUserByPhone = await prisma.user.findUnique({
+        where: { phone: empPhone },
+      });
+      const existingUserByEmail = await prisma.user.findUnique({
+        where: { email: emailVal },
+      });
+
+      if (existingUserByPhone) {
+        const hashedPassword = await hashPassword(passwordVal);
+        await prisma.user.update({
+          where: { id: existingUserByPhone.id },
+          data: {
+            email: emailVal,
+            password: hashedPassword,
+            role: UserRole.EMPLOYEE,
+            branchId: updatedEmployee.branchId,
+          },
+        });
+        await prisma.employee.update({
+          where: { id: updatedEmployee.id },
+          data: { userId: existingUserByPhone.id },
+        });
+        (updatedEmployee as any).userId = existingUserByPhone.id;
+      } else if (existingUserByEmail) {
+        throw new ValidationError(`A user account with email ${emailVal} already exists.`);
+      } else {
+        const hashedPassword = await hashPassword(passwordVal);
+        const newUser = await prisma.user.create({
+          data: {
+            firstName: updatedEmployee.firstName,
+            lastName: updatedEmployee.lastName,
+            email: emailVal,
+            phone: empPhone,
+            password: hashedPassword,
+            role: UserRole.EMPLOYEE,
+            branchId: updatedEmployee.branchId,
+          },
+        });
+        await prisma.employee.update({
+          where: { id: updatedEmployee.id },
+          data: { userId: newUser.id },
+        });
+        (updatedEmployee as any).userId = newUser.id;
+      }
+    }
+
     if (data.branchId && data.branchId !== existing.branchId && currentUser.role === "OWNER") {
       await NotificationService.notifyBranchAdmins(data.branchId, {
         title: "Employee Assigned / ሰራተኛ ተመደበ",
@@ -492,7 +568,15 @@ export class EmployeeService {
       });
     }
 
-    return updatedEmployee;
+    const finalResult = await prisma.employee.findUnique({
+      where: { id: updatedEmployee.id },
+      include: {
+        branch: true,
+        user: { select: { id: true, email: true, phone: true } },
+      },
+    });
+
+    return finalResult || updatedEmployee;
   }
 
   /**

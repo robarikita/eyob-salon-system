@@ -14,6 +14,7 @@ router.get("/dashboard", authenticate, authorize("OWNER", "BRANCH_ADMIN"), Emplo
 router.post("/", authenticate, authorize("OWNER", "BRANCH_ADMIN"), requireBranchAccess, EmployeeController.createEmployee);
 router.get("/:id", authenticate, authorize("OWNER", "BRANCH_ADMIN", "EMPLOYEE"), EmployeeController.getEmployeeById);
 router.patch("/:id", authenticate, authorize("OWNER", "BRANCH_ADMIN"), EmployeeController.updateEmployee);
+router.put("/:id", authenticate, authorize("OWNER", "BRANCH_ADMIN"), EmployeeController.updateEmployee);
 router.patch("/:id/toggle-status", authenticate, authorize("OWNER", "BRANCH_ADMIN"), EmployeeController.toggleEmployeeStatus);
 router.put("/:id/services", authenticate, authorize("OWNER", "BRANCH_ADMIN"), EmployeeController.assignServices);
 router.get("/:id/schedule", authenticate, authorize("OWNER", "BRANCH_ADMIN", "EMPLOYEE"), EmployeeController.getSchedule);

@@ -32,6 +32,8 @@ export const updateEmployeeSchema = createEmployeeSchema.partial().extend({
   isActive: z.boolean().optional(),
   hireReason: z.string().optional().nullable(),
   requestedBy: z.string().optional().nullable(),
+  email: z.string().email("Invalid email address").optional().nullable().or(z.literal("")),
+  password: z.string().min(6, "Password must be at least 6 characters").optional().nullable().or(z.literal("")),
 });
 
 export const assignServicesSchema = z.object({

@@ -934,6 +934,22 @@ export const serviceApi = {
   },
 
   /**
+   * Delete governance request record
+   */
+  async deleteGovernanceRequest(id: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/admin/governance/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || `Failed to delete governance request (${res.status})`);
+    }
+    const json = await res.json();
+    return json.data || json;
+  },
+
+  /**
    * List user notifications
    */
   async getNotifications(branchId?: string): Promise<NotificationItem[]> {

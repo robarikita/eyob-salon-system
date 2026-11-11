@@ -2,7 +2,7 @@ import prisma from "../../utils/prisma";
 import { NotFoundError } from "../../errors/AppError";
 
 export interface CreateNotificationInput {
-  userId: string;
+  userId?: string | null;
   branchId?: string | null;
   title: string;
   message: string;
@@ -18,18 +18,29 @@ export class NotificationService {
     user: { id: string; role: string; branchId?: string | null },
     branchId?: string
   ) {
-    const where: any = { userId: user.id };
+    const where: any = {};
 
     if (user.role === "BRANCH_ADMIN" && user.branchId) {
       where.OR = [
-        { branchId: null },
-        { branchId: user.branchId },
+        { userId: user.id },
+        { userId: null, branchId: user.branchId },
       ];
-    } else if (user.role === "OWNER" && branchId && branchId !== "all") {
-      where.OR = [
-        { branchId: null },
-        { branchId: branchId },
-      ];
+    } else if (user.role === "OWNER") {
+      if (branchId && branchId !== "all") {
+        where.OR = [
+          { userId: user.id, branchId },
+          { userId: user.id, branchId: null },
+          { userId: null, branchId },
+          { userId: null, branchId: null },
+        ];
+      } else {
+        where.OR = [
+          { userId: user.id },
+          { userId: null },
+        ];
+      }
+    } else {
+      where.userId = user.id;
     }
 
     const [notifications, unreadCount] = await Promise.all([
@@ -49,9 +60,14 @@ export class NotificationService {
   /**
    * Delete a single notification (intentional user deletion)
    */
-  static async deleteNotification(id: string, user: { id: string; role: string }) {
+  static async deleteNotification(id: string, user: { id: string; role: string; branchId?: string | null }) {
     const where: any = { id };
-    if (user.role !== "OWNER") {
+    if (user.role === "BRANCH_ADMIN" && user.branchId) {
+      where.OR = [
+        { userId: user.id },
+        { userId: null, branchId: user.branchId },
+      ];
+    } else if (user.role !== "OWNER") {
       where.userId = user.id;
     }
 
@@ -72,10 +88,29 @@ export class NotificationService {
     user: { id: string; role: string; branchId?: string | null },
     branchId?: string
   ) {
-    const where: any = { userId: user.id };
+    const where: any = {};
 
-    if (user.role === "OWNER" && branchId && branchId !== "all") {
-      where.branchId = branchId;
+    if (user.role === "BRANCH_ADMIN" && user.branchId) {
+      where.OR = [
+        { userId: user.id },
+        { userId: null, branchId: user.branchId },
+      ];
+    } else if (user.role === "OWNER") {
+      if (branchId && branchId !== "all") {
+        where.OR = [
+          { userId: user.id, branchId },
+          { userId: user.id, branchId: null },
+          { userId: null, branchId },
+          { userId: null, branchId: null },
+        ];
+      } else {
+        where.OR = [
+          { userId: user.id },
+          { userId: null },
+        ];
+      }
+    } else {
+      where.userId = user.id;
     }
 
     return await prisma.notification.deleteMany({
@@ -88,7 +123,10 @@ export class NotificationService {
    */
   static async markAsRead(id: string, userId: string) {
     const notification = await prisma.notification.findFirst({
-      where: { id, userId },
+      where: {
+        id,
+        OR: [{ userId }, { userId: null }],
+      },
     });
     if (!notification) {
       return null;
@@ -105,18 +143,32 @@ export class NotificationService {
    */
   static async markAllAsRead(userId: string) {
     return await prisma.notification.updateMany({
-      where: { userId, isRead: false },
+      where: {
+        isRead: false,
+        OR: [{ userId }, { userId: null }],
+      },
       data: { isRead: true },
     });
   }
 
   /**
-   * Create a direct notification
+   * Create a direct notification with strict FK integrity guard
    */
   static async createNotification(data: CreateNotificationInput) {
+    let validUserId: string | null = null;
+    if (data.userId) {
+      const userExists = await prisma.user.findUnique({
+        where: { id: data.userId },
+        select: { id: true },
+      });
+      if (userExists) {
+        validUserId = userExists.id;
+      }
+    }
+
     return await prisma.notification.create({
       data: {
-        userId: data.userId,
+        userId: validUserId,
         branchId: data.branchId || null,
         title: data.title,
         message: data.message,

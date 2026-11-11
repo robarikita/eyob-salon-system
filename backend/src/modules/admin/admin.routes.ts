@@ -23,6 +23,7 @@ router.post("/users/:id/reset-password", authorize("OWNER"), AdminController.res
 // 4. Governance & Change Approvals
 router.get("/governance", authorize("OWNER", "BRANCH_ADMIN"), AdminController.getGovernanceRequests);
 router.post("/governance/:id/review", authorize("OWNER"), AdminController.reviewGovernanceRequest);
+router.delete("/governance/:id", authorize("OWNER", "BRANCH_ADMIN"), AdminController.deleteGovernanceRequest);
 
 export default router;
 

@@ -30,6 +30,8 @@ export const EmployeeProfile: React.FC = () => {
   const [editAmharicName, setEditAmharicName] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editEmail, setEditEmail] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+  const [showEditPassword, setShowEditPassword] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editWorkstation, setEditWorkstation] = useState('');
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -103,7 +105,9 @@ export const EmployeeProfile: React.FC = () => {
     setEditLastName(employee.lastName || '');
     setEditAmharicName(employee.amharicName || '');
     setEditPhone(employee.phone || '');
-    setEditEmail(employee.email || '');
+    setEditEmail(employee.user?.email || employee.email || '');
+    setEditPassword('');
+    setShowEditPassword(false);
     setEditTitle(employee.ritualTitle || (employee as any).title || '');
     setEditWorkstation(employee.workstation || '');
     setShowEditModal(true);
@@ -114,7 +118,7 @@ export const EmployeeProfile: React.FC = () => {
     if (!employee) return;
     try {
       setIsSavingEdit(true);
-      const updated = await employeeApi.updateEmployee(employee.id, {
+      const payload: any = {
         firstName: editFirstName.trim(),
         lastName: editLastName.trim(),
         amharicName: editAmharicName.trim() || null,
@@ -123,9 +127,14 @@ export const EmployeeProfile: React.FC = () => {
         ritualTitle: editTitle.trim() || null,
         title: editTitle.trim() || null,
         workstation: editWorkstation.trim() || null,
-      });
+      };
+      if (editPassword.trim()) {
+        payload.password = editPassword.trim();
+      }
+      const updated = await employeeApi.updateEmployee(employee.id, payload);
       setEmployee((prev) => (prev ? { ...prev, ...updated } : null));
       setShowEditModal(false);
+      loadData();
     } catch (err: any) {
       alert(err.message || 'Edit failed');
     } finally {
@@ -609,20 +618,6 @@ export const EmployeeProfile: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-stone-300 font-semibold mb-1">
-                    {isAm ? 'ኢሜይል' : 'Email'}
-                  </label>
-                  <input
-                    type="email"
-                    value={editEmail}
-                    onChange={(e) => setEditEmail(e.target.value)}
-                    className="w-full bg-[#0E0B09] border border-[#2C2724] rounded-lg px-3 py-2 text-xs text-[#FAF7F2] outline-none focus:border-[#D4AF37]"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <label className="block text-stone-300 font-semibold mb-1">
                     {isAm ? 'ሙያ / ሚና' : 'Title'}
                   </label>
                   <input
@@ -632,16 +627,64 @@ export const EmployeeProfile: React.FC = () => {
                     className="w-full bg-[#0E0B09] border border-[#2C2724] rounded-lg px-3 py-2 text-xs text-[#FAF7F2] outline-none focus:border-[#D4AF37]"
                   />
                 </div>
-                <div>
+              </div>
+
+              <div className="text-xs">
+                <label className="block text-stone-300 font-semibold mb-1">
+                  {isAm ? 'የስራ ቦታ' : 'Workstation'}
+                </label>
+                <input
+                  type="text"
+                  value={editWorkstation}
+                  onChange={(e) => setEditWorkstation(e.target.value)}
+                  placeholder="e.g. Chair 02"
+                  className="w-full bg-[#0E0B09] border border-[#2C2724] rounded-lg px-3 py-2 text-xs text-[#FAF7F2] outline-none focus:border-[#D4AF37]"
+                />
+              </div>
+
+              {/* Account Credentials / የመግቢያ መረጃ */}
+              <div className="pt-3 border-t border-[#2C2724] space-y-3">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#D4AF37] uppercase tracking-wider">
+                  <span className="material-symbols-outlined text-[15px]">lock</span>
+                  <span>{isAm ? 'የመግቢያ መረጃ' : 'Account Credentials'}</span>
+                </div>
+
+                <div className="text-xs">
                   <label className="block text-stone-300 font-semibold mb-1">
-                    {isAm ? 'የስራ ቦታ' : 'Workstation'}
+                    {isAm ? 'ኢሜይል' : 'Email'}
                   </label>
                   <input
-                    type="text"
-                    value={editWorkstation}
-                    onChange={(e) => setEditWorkstation(e.target.value)}
+                    type="email"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    placeholder="specialist@eyobbeauty.com"
                     className="w-full bg-[#0E0B09] border border-[#2C2724] rounded-lg px-3 py-2 text-xs text-[#FAF7F2] outline-none focus:border-[#D4AF37]"
                   />
+                </div>
+
+                <div className="text-xs">
+                  <label className="block text-stone-300 font-semibold mb-1">
+                    {isAm ? 'አዲስ የይለፍ ቃል' : 'New Password'}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showEditPassword ? 'text' : 'password'}
+                      value={editPassword}
+                      onChange={(e) => setEditPassword(e.target.value)}
+                      placeholder={isAm ? 'ካልፈለጉ ይተዉት' : 'Leave blank to keep'}
+                      className="w-full bg-[#0E0B09] border border-[#2C2724] rounded-lg px-3 py-2 pr-10 text-xs text-[#FAF7F2] font-mono outline-none focus:border-[#D4AF37]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowEditPassword((prev) => !prev)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-[#D4AF37]"
+                      title={showEditPassword ? 'Hide' : 'Show'}
+                    >
+                      <span className="material-symbols-outlined text-[16px]">
+                        {showEditPassword ? 'visibility_off' : 'visibility'}
+                      </span>
+                    </button>
+                  </div>
                 </div>
               </div>
 

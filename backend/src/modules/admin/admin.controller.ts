@@ -3,7 +3,7 @@ import prisma from "../../utils/prisma";
 import { hashPassword } from "../../utils/password";
 import { logger } from "../../utils/logger";
 import { NotificationService } from "../notification/notification.service";
-import { UnauthorizedError } from "../../errors/AppError";
+import { UnauthorizedError, NotFoundError, ForbiddenError } from "../../errors/AppError";
 
 export class AdminController {
   /**
@@ -699,14 +699,32 @@ export class AdminController {
           : `Request for ${empName} was declined: ${reviewNote || govRequest.reason || "No reason provided"}`;
       }
 
-      await NotificationService.createNotification({
-        userId: govRequest.requestedBy,
-        branchId: govRequest.branchId,
-        title: notifTitle,
-        message: notifMessage,
-        type: "APPROVAL_NOTICE",
-        link: govRequest.type === "EMPLOYEE_REGISTRATION" ? "/admin/employees" : "/admin/services",
-      });
+      // 3. Notify the requesting Branch Admin safely
+      let validRequestedByUser = null;
+      if (govRequest.requestedBy) {
+        validRequestedByUser = await prisma.user.findUnique({
+          where: { id: govRequest.requestedBy },
+          select: { id: true },
+        });
+      }
+
+      if (validRequestedByUser) {
+        await NotificationService.createNotification({
+          userId: validRequestedByUser.id,
+          branchId: govRequest.branchId,
+          title: notifTitle,
+          message: notifMessage,
+          type: "APPROVAL_NOTICE",
+          link: govRequest.type === "EMPLOYEE_REGISTRATION" ? "/admin/employees" : "/admin/services",
+        });
+      } else {
+        await NotificationService.notifyBranchAdmins(govRequest.branchId, {
+          title: notifTitle,
+          message: notifMessage,
+          type: "APPROVAL_NOTICE",
+          link: govRequest.type === "EMPLOYEE_REGISTRATION" ? "/admin/employees" : "/admin/services",
+        });
+      }
 
       res.status(200).json({
         success: true,
@@ -719,6 +737,48 @@ export class AdminController {
         success: false,
         message: err?.message || "Failed to process governance review",
       });
+    }
+  }
+
+  /**
+   * DELETE /api/v1/admin/governance/:id
+   * Allows OWNER or assigned BRANCH_ADMIN to permanently delete a governance request
+   */
+  static async deleteGovernanceRequest(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = req.params.id as string;
+      const user = (req as any).user;
+
+      if (!user) {
+        throw new UnauthorizedError("Authentication required / መግባት ያስፈልጋል");
+      }
+
+      const govReq = await prisma.governanceRequest.findUnique({
+        where: { id },
+      });
+
+      if (!govReq) {
+        throw new NotFoundError("Governance request not found / የጠየቁት ጥያቄ አልተገኘም");
+      }
+
+      if (user.role === "BRANCH_ADMIN") {
+        if (!user.branchId || user.branchId !== govReq.branchId) {
+          throw new ForbiddenError(
+            "Forbidden: You do not have permission to delete requests for other branches / የቅርንጫፍ ጥያቄን የማጥፋት ፈቃድ የለዎትም"
+          );
+        }
+      }
+
+      await prisma.governanceRequest.delete({
+        where: { id },
+      });
+
+      res.status(200).json({
+        success: true,
+        message: "Governance request deleted successfully / ጥያቄው ተሰርዟል",
+      });
+    } catch (err) {
+      next(err);
     }
   }
 }

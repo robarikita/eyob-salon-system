@@ -19,6 +19,12 @@ export interface Employee {
   requestedBy?: string | null;
   specialties?: string[];
   branchId: string;
+  userId?: string | null;
+  user?: {
+    id: string;
+    email?: string | null;
+    phone?: string | null;
+  } | null;
   branch?: {
     id: string;
     name: string;

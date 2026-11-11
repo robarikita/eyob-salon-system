@@ -68,6 +68,24 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
     }
   }, [user, effectiveBranchId]);
 
+  const handleToggleNotifications = async () => {
+    const nextState = !notificationsOpen;
+    setNotificationsOpen(nextState);
+    if (nextState) {
+      // Opening: automatically mark all as read
+      if (unreadCount > 0) {
+        try {
+          await serviceApi.markAllNotificationsRead();
+          setUnreadCount(0);
+          setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+        } catch {}
+      }
+    } else {
+      // Closing: clear read notifications from bell dropdown
+      setNotifications((prev) => prev.filter((n) => !n.isRead));
+    }
+  };
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -75,6 +93,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
         !notifDropdownRef.current.contains(event.target as Node)
       ) {
         setNotificationsOpen(false);
+        setNotifications((prev) => prev.filter((n) => !n.isRead));
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -84,7 +103,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   const handleMarkAllRead = async () => {
     try {
       await serviceApi.markAllNotificationsRead();
-      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      setNotifications([]);
       setUnreadCount(0);
     } catch {}
   };
@@ -114,15 +133,12 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   };
 
   const handleNotificationClick = async (notif: NotificationItem) => {
-    if (!notif.isRead) {
-      try {
-        await serviceApi.markNotificationRead(notif.id);
-        setNotifications((prev) =>
-          prev.map((n) => (n.id === notif.id ? { ...n, isRead: true } : n))
-        );
-        setUnreadCount((prev) => Math.max(0, prev - 1));
-      } catch {}
-    }
+    try {
+      await serviceApi.markNotificationRead(notif.id);
+    } catch {}
+    // Clear clicked alert from dropdown and badge
+    setNotifications((prev) => prev.filter((n) => n.id !== notif.id));
+    setUnreadCount((prev) => Math.max(0, prev - 1));
     setNotificationsOpen(false);
     if (notif.link) {
       navigate(notif.link);
@@ -494,7 +510,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
             <div className="relative" ref={notifDropdownRef}>
               <button
                 type="button"
-                onClick={() => setNotificationsOpen((prev) => !prev)}
+                onClick={handleToggleNotifications}
                 className="relative p-2 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface transition-colors cursor-pointer"
                 title="Notifications / ማስታወቂያዎች"
               >

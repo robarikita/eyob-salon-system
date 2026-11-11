@@ -14,6 +14,8 @@ export const GovernanceApprovalPage: React.FC = () => {
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
   const fetchRequests = async () => {
     setLoading(true);
@@ -45,6 +47,21 @@ export const GovernanceApprovalPage: React.FC = () => {
       alert(`Review action failed: ${err.message}`);
     } finally {
       setProcessingId(null);
+    }
+  };
+
+  const handleDeleteRecord = async (id: string) => {
+    setIsDeleting(true);
+    try {
+      await serviceApi.deleteGovernanceRequest(id);
+      setRequests((prev) => prev.filter((r) => r.id !== id));
+      setDeleteConfirmId(null);
+      setToastMessage('Record Deleted / ተሰርዟል');
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (err: any) {
+      alert(`Delete failed: ${err.message}`);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -172,13 +189,24 @@ export const GovernanceApprovalPage: React.FC = () => {
                       </span>
                     </div>
 
-                    <div className="text-[11px] text-stone-400 text-right">
-                      <div>{formatDateTime(req.createdAt)}</div>
-                      {req.updatedAt && req.updatedAt !== req.createdAt && (
-                        <div className="text-[9px] text-stone-500">
-                          Updated: {formatDateTime(req.updatedAt)}
-                        </div>
-                      )}
+                    <div className="flex items-center gap-3">
+                      <div className="text-[11px] text-stone-400 text-right">
+                        <div>{formatDateTime(req.createdAt)}</div>
+                        {req.updatedAt && req.updatedAt !== req.createdAt && (
+                          <div className="text-[9px] text-stone-500">
+                            Updated: {formatDateTime(req.updatedAt)}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteConfirmId(req.id)}
+                        className="px-2.5 py-1 rounded bg-red-950/20 hover:bg-red-950/40 text-red-400 border border-red-900/40 text-[10px] font-bold uppercase tracking-wider transition flex items-center gap-1"
+                        title="Delete Record / አጥፋ"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">delete</span>
+                        <span>Delete / አጥፋ</span>
+                      </button>
                     </div>
                   </div>
 
@@ -342,6 +370,45 @@ export const GovernanceApprovalPage: React.FC = () => {
                 </div>
               );
             })}
+          </div>
+        )}
+        {/* Delete Confirmation Modal */}
+        {deleteConfirmId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-[#181412] border border-[#2C2724] rounded-2xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-red-950/40 border border-red-900/50 flex items-center justify-center text-red-400">
+                  <span className="material-symbols-outlined text-xl">delete</span>
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-[#FAF7F2]">
+                    Delete Record? / ይመዝገቡ ይጥፋ?
+                  </h3>
+                  <p className="text-[11px] text-stone-400 mt-0.5">
+                    Permanent deletion from database.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#2C2724]">
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => setDeleteConfirmId(null)}
+                  className="px-3.5 py-1.5 rounded-lg border border-[#2C2724] text-xs font-semibold text-stone-400 hover:text-white transition"
+                >
+                  Cancel / ሰርዝ
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => handleDeleteRecord(deleteConfirmId)}
+                  className="px-4 py-1.5 rounded-lg bg-red-900/40 hover:bg-red-900/60 text-red-300 border border-red-700/50 text-xs font-bold uppercase tracking-wider transition disabled:opacity-50"
+                >
+                  {isDeleting ? 'Deleting...' : 'Delete / አጥፋ'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
