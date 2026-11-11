@@ -17,8 +17,14 @@ export interface BookingItemDTO {
   priceSnapshot: number;
   durationSnapshot: number;
   depositSnapshot: number;
+  snapshotServiceName?: string;
+  snapshotPrice?: number;
+  snapshotDurationMinutes?: number;
+  snapshotDepositAmount?: number;
+  snapshotEmployeeName?: string;
   startTime: string;
   endTime: string;
+  sequenceOrder?: number;
   employeeId?: string;
   employee?: {
     id: string;
@@ -45,11 +51,15 @@ export interface BookingDTO {
   bookingNumber: string;
   status: 'PENDING_PAYMENT' | 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'REJECTED' | 'NO_SHOW' | 'EXPIRED';
   totalAmount: number;
+  depositAmount?: number;
   depositRequired: number;
   depositPaid: number;
   balanceDue: number;
+  paymentMethod?: string;
+  paymentStatus?: string;
   notes?: string;
   cancellationReason?: string;
+  cancelledAt?: string;
   createdAt: string;
   items: BookingItemDTO[];
   branch: {
@@ -246,6 +256,27 @@ export const bookingApi = {
     }
     const json = await res.json();
     return json.data.booking;
+  },
+
+  /**
+   * Transition appointment status (FSM)
+   */
+  async transitionBookingStatus(
+    id: string,
+    targetStatus: string,
+    reason?: string
+  ): Promise<BookingDTO> {
+    const res = await fetch(`${API_BASE}/bookings/${id}/status`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ targetStatus, reason }),
+    });
+    if (!res.ok) {
+      const errorJson = await res.json().catch(() => null);
+      throw new Error(errorJson?.message || `Status transition failed (HTTP ${res.status})`);
+    }
+    const json = await res.json();
+    return json.data?.booking || json.data;
   },
 
   /**

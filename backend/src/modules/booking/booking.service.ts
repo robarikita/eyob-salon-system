@@ -2,12 +2,14 @@ import prisma from "../../utils/prisma";
 import {
   NotFoundError,
   ValidationError,
+  BadRequestError,
   ForbiddenError,
   ConflictError,
 } from "../../errors/AppError";
 import { BookingStatus, UserRole } from "@prisma/client";
 import { ServiceRitualService } from "../service/service.service";
 import { EmployeeService } from "../employee/employee.service";
+import { NotificationService } from "../notification/notification.service";
 import { AvailabilityService } from "./availability.service";
 import {
   MultiServiceSchedulingService,
@@ -21,14 +23,46 @@ import {
   CreateReviewInput,
 } from "./booking.schema";
 
+export const VALID_TRANSITIONS: Record<string, string[]> = {
+  PENDING_PAYMENT: ["CONFIRMED", "CANCELLED", "EXPIRED"],
+  CONFIRMED: ["IN_PROGRESS", "CANCELLED", "NO_SHOW"],
+  IN_PROGRESS: ["COMPLETED", "CANCELLED"],
+  COMPLETED: [],
+  CANCELLED: [],
+  NO_SHOW: [],
+  EXPIRED: [],
+};
+
 export interface CurrentUser {
   id: string;
   role: UserRole;
   branchId: string | null;
+  email?: string;
   phoneNumber?: string;
 }
 
 export class BookingService {
+  /**
+   * Generate human-readable booking number (e.g. EYB-10245)
+   */
+  static async generateBookingNumber(tx?: any): Promise<string> {
+    const client = tx || prisma;
+    let unique = false;
+    let candidate = "";
+    while (!unique) {
+      const num = Math.floor(10000 + Math.random() * 90000);
+      candidate = `EYB-${num}`;
+      const existing = await client.booking.findUnique({
+        where: { bookingNumber: candidate },
+        select: { id: true },
+      });
+      if (!existing) {
+        unique = true;
+      }
+    }
+    return candidate;
+  }
+
   /**
    * Helper to check branch isolation
    */
@@ -161,14 +195,23 @@ export class BookingService {
     const depositPaid = depositRequired;
     const balanceDue = Math.max(0, totalAmount - depositPaid);
 
+    // Pre-fetch employee names for immutable snapshotting
+    const employeeIds = Array.from(new Set(rawItems.map((i) => i.employeeId)));
+    const employees = await prisma.employee.findMany({
+      where: { id: { in: employeeIds } },
+      select: { id: true, firstName: true, lastName: true },
+    });
+    const employeeNameMap = new Map<string, string>();
+    employees.forEach((emp) => {
+      employeeNameMap.set(emp.id, `${emp.firstName} ${emp.lastName}`.trim());
+    });
+
     // 3. Concurrency Lock: Lock each distinct (employeeId, dateStr)
     const lockKeys = new Set<string>();
     for (const item of preparedItems) {
       const dStr = item.startTime.toISOString().split("T")[0];
       lockKeys.add(`bk_${item.employeeId}_${dStr}`);
     }
-
-    const dateStr = preparedItems[0].startTime.toISOString().split("T")[0];
 
     return await prisma.$transaction(async (tx: any) => {
       // Acquire transaction-level advisory locks for all distinct specialist+day combinations
@@ -211,10 +254,8 @@ export class BookingService {
         }
       }
 
-      // Canonical booking number
-      const datePrefix = `EYOB-${dateStr.replace(/-/g, "")}`;
-      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-      const bookingNumber = `${datePrefix}-${randomSuffix}`;
+      // Canonical booking number: EYB-[5-6 DIGITS]
+      const bookingNumber = await BookingService.generateBookingNumber(tx);
 
       // Create Booking with all items
       const booking = await tx.booking.create({
@@ -222,9 +263,11 @@ export class BookingService {
           bookingNumber,
           status: BookingStatus.CONFIRMED,
           totalAmount,
+          depositAmount: depositRequired,
           depositRequired,
           depositPaid,
           balanceDue,
+          paymentStatus: "PENDING",
           reservationExpires: new Date(Date.now() + 15 * 60 * 1000),
           notes,
           customerId,
@@ -241,6 +284,7 @@ export class BookingService {
               snapshotPrice: item.price,
               snapshotDurationMinutes: item.duration,
               snapshotDepositAmount: item.depositRequired,
+              snapshotEmployeeName: employeeNameMap.get(item.employeeId) || null,
               startTime: item.startTime,
               endTime: item.endTime,
               employeeId: item.employeeId,
@@ -302,33 +346,34 @@ export class BookingService {
       orderBy: { createdAt: "desc" },
     });
 
-    if (!statusFilter || statusFilter === "ALL") {
+    const filter = (statusFilter || "ALL").toUpperCase();
+    if (filter === "ALL") {
       return bookings;
     }
 
-    if (statusFilter === "UPCOMING") {
+    if (filter === "UPCOMING") {
       return bookings.filter(
         (b: any) =>
-          (b.status === BookingStatus.CONFIRMED || b.status === BookingStatus.PENDING_PAYMENT) &&
-          b.items.some((item: any) => new Date(item.startTime) >= now)
+          (b.status === "CONFIRMED" || b.status === "PENDING_PAYMENT" || b.status === "IN_PROGRESS") &&
+          (b.items.length === 0 || b.items.some((item: any) => new Date(item.startTime) >= now || b.status === "IN_PROGRESS"))
       );
     }
 
-    if (statusFilter === "PAST") {
+    if (filter === "PAST") {
       return bookings.filter(
         (b: any) =>
-          b.status === BookingStatus.COMPLETED ||
-          (b.status === BookingStatus.CONFIRMED && b.items.some((item: any) => new Date(item.endTime) < now))
+          b.status === "COMPLETED" ||
+          (b.status === "CONFIRMED" && b.items.every((item: any) => new Date(item.endTime) < now))
       );
     }
 
-    if (statusFilter === "CANCELLED") {
+    if (filter === "CANCELLED") {
       return bookings.filter(
         (b: any) =>
-          b.status === BookingStatus.CANCELLED ||
-          b.status === BookingStatus.REJECTED ||
-          b.status === BookingStatus.NO_SHOW ||
-          b.status === BookingStatus.EXPIRED
+          b.status === "CANCELLED" ||
+          b.status === "REJECTED" ||
+          b.status === "NO_SHOW" ||
+          b.status === "EXPIRED"
       );
     }
 
@@ -382,44 +427,165 @@ export class BookingService {
   }
 
   /**
-   * Cancel an appointment
+   * Finite State Machine: Transition appointment status with strict lifecycle rules & IDOR guards
    */
-  static async cancelBooking(id: string, reason: string | undefined, currentUser: CurrentUser) {
+  static async transitionBookingStatus(
+    bookingId: string,
+    targetStatus: string,
+    currentUser: CurrentUser,
+    reason?: string
+  ) {
     const booking = await prisma.booking.findUnique({
-      where: { id },
-      include: { items: true },
+      where: { id: bookingId },
+      include: {
+        items: {
+          include: {
+            employee: true,
+            service: true,
+          },
+        },
+        branch: true,
+        customer: true,
+      },
     });
 
     if (!booking) {
-      throw new NotFoundError("Appointment not found.");
+      throw new NotFoundError("Appointment booking not found / ቀጠሮው አልተገኘም");
     }
 
-    if (currentUser.role === "CUSTOMER" && booking.customerId !== currentUser.id) {
-      throw new ForbiddenError("Forbidden: You cannot cancel another patron's appointment.");
+    const currentStatus = booking.status as string;
+
+    // 1. Validate Target Status in enum
+    const validStatuses = Object.keys(VALID_TRANSITIONS);
+    if (!validStatuses.includes(targetStatus)) {
+      throw new BadRequestError(`Invalid status '${targetStatus}' / ልክ ያልሆነ ሁኔታ`);
     }
 
-    if (currentUser.role === "BRANCH_ADMIN" && booking.branchId !== currentUser.branchId) {
-      throw new ForbiddenError("Forbidden: branch access denied.");
+    // 2. Validate Finite State Machine Transitions
+    const allowedTargets = VALID_TRANSITIONS[currentStatus] || [];
+    if (!allowedTargets.includes(targetStatus)) {
+      throw new BadRequestError(
+        `Illegal transition from ${currentStatus} to ${targetStatus} / ተገቢ ያልሆነ የቀጠሮ ሁኔታ ቅያሬ`
+      );
     }
 
-    if (booking.status === BookingStatus.COMPLETED) {
-      throw new ValidationError("Cannot cancel an already completed appointment.");
+    // 3. Authorization Guards
+    if (currentUser.role === "CUSTOMER") {
+      if (booking.customerId !== currentUser.id) {
+        throw new ForbiddenError("Forbidden: Access denied to other patrons' bookings");
+      }
+      if (targetStatus !== "CANCELLED") {
+        throw new ForbiddenError(
+          "Forbidden: Customers can only cancel pending or confirmed appointments"
+        );
+      }
+      if (currentStatus !== "PENDING_PAYMENT" && currentStatus !== "CONFIRMED") {
+        throw new BadRequestError(
+          `Cannot cancel appointment in status '${currentStatus}'`
+        );
+      }
+    } else if (currentUser.role === "EMPLOYEE") {
+      const emp = await prisma.employee.findFirst({
+        where: {
+          OR: [
+            { userId: currentUser.id },
+            ...(currentUser.email ? [{ email: currentUser.email }] : []),
+            ...(currentUser.phoneNumber ? [{ phone: currentUser.phoneNumber }] : []),
+          ],
+        },
+      });
+      const isAssigned =
+        emp &&
+        (booking.employeeId === emp.id ||
+          booking.items.some((it) => it.employeeId === emp.id));
+
+      if (!isAssigned) {
+        throw new ForbiddenError(
+          "Forbidden: Specialists can only transition their own assigned appointments"
+        );
+      }
+    } else if (currentUser.role === "BRANCH_ADMIN") {
+      if (currentUser.branchId && booking.branchId !== currentUser.branchId) {
+        throw new ForbiddenError("Forbidden: branch access denied");
+      }
     }
 
-    if (booking.status === BookingStatus.CANCELLED || booking.status === BookingStatus.REJECTED) {
-      throw new ValidationError("Appointment is already cancelled or rejected.");
+    // 4. Require Reason on Cancellation
+    const updateData: any = {
+      status: targetStatus as BookingStatus,
+    };
+
+    if (targetStatus === "CANCELLED") {
+      if (!reason || reason.trim().length < 3) {
+        throw new BadRequestError(
+          "Cancellation reason is required (minimum 3 characters) / የስረዛ ምክንያት ያስፈልጋል"
+        );
+      }
+      updateData.cancellationReason = reason.trim();
+      updateData.cancelledAt = new Date();
+    } else if (targetStatus === "COMPLETED") {
+      updateData.balanceDue = 0;
+      updateData.paymentStatus = "PAID";
     }
 
-    const updated = await prisma.booking.update({
-      where: { id },
-      data: {
-        status: BookingStatus.CANCELLED,
-        cancellationReason: reason || "Cancelled by client",
+    const updatedBooking = await prisma.booking.update({
+      where: { id: bookingId },
+      data: updateData,
+      include: {
+        items: {
+          include: {
+            employee: true,
+            service: true,
+          },
+        },
+        branch: true,
+        customer: true,
       },
-      include: { items: true },
     });
 
-    return updated;
+    // 5. Dispatch Notifications
+    try {
+      if (targetStatus === "COMPLETED") {
+        await NotificationService.createNotification({
+          userId: booking.customerId,
+          branchId: booking.branchId,
+          title: "Visit Completed / ተጠናቋል",
+          message: `Thank you for visiting ${booking.branch?.name || "Eyob Salon"}. Please share your review!`,
+          type: "APPOINTMENT_COMPLETED",
+          link: "/my-bookings",
+        });
+      } else if (targetStatus === "CANCELLED") {
+        await NotificationService.notifyBranchAdmins(booking.branchId, {
+          title: "Appointment Cancelled / ቀጠሮ ተሰርዟል",
+          message: `Booking ${booking.bookingNumber} was cancelled. Reason: ${updateData.cancellationReason}`,
+          type: "APPOINTMENT_CANCELLED",
+          link: `/admin/appointments`,
+        });
+        for (const item of booking.items) {
+          if (item.employee?.userId) {
+            await NotificationService.createNotification({
+              userId: item.employee.userId,
+              branchId: booking.branchId,
+              title: "Appointment Cancelled / ቀጠሮ ተሰርዟል",
+              message: `Booking ${booking.bookingNumber} for ${item.service?.name || "service"} was cancelled.`,
+              type: "APPOINTMENT_CANCELLED",
+              link: "/staff/appointments",
+            });
+          }
+        }
+      }
+    } catch (notifErr) {
+      console.error("Failed to dispatch appointment notification:", notifErr);
+    }
+
+    return updatedBooking;
+  }
+
+  /**
+   * Cancel an appointment
+   */
+  static async cancelBooking(id: string, reason: string | undefined, currentUser: CurrentUser) {
+    return await this.transitionBookingStatus(id, "CANCELLED", currentUser, reason);
   }
 
   /**
@@ -641,70 +807,11 @@ export class BookingService {
    */
   static async updateAppointmentStatus(
     bookingId: string,
-    newStatus: BookingStatus,
+    newStatus: BookingStatus | string,
     reason: string | undefined,
     currentUser: CurrentUser
   ) {
-    const booking = await prisma.booking.findUnique({
-      where: { id: bookingId },
-      include: { items: true },
-    });
-
-    if (!booking) {
-      throw new NotFoundError("Appointment booking not found.");
-    }
-
-    this.checkBranchAccess(currentUser, booking.branchId);
-
-    // State machine transitions
-    if (newStatus === BookingStatus.REJECTED) {
-      return await prisma.booking.update({
-        where: { id: bookingId },
-        data: {
-          status: BookingStatus.REJECTED,
-          cancellationReason: reason || "Rejected by salon specialist",
-        },
-      });
-    }
-
-    if (newStatus === BookingStatus.IN_PROGRESS) {
-      return await prisma.booking.update({
-        where: { id: bookingId },
-        data: { status: BookingStatus.IN_PROGRESS },
-      });
-    }
-
-    if (newStatus === BookingStatus.COMPLETED) {
-      return await prisma.booking.update({
-        where: { id: bookingId },
-        data: {
-          status: BookingStatus.COMPLETED,
-          balanceDue: 0,
-        },
-      });
-    }
-
-    if (newStatus === BookingStatus.CANCELLED) {
-      return await prisma.booking.update({
-        where: { id: bookingId },
-        data: {
-          status: BookingStatus.CANCELLED,
-          cancellationReason: reason || "Cancelled by admin",
-        },
-      });
-    }
-
-    if (newStatus === BookingStatus.NO_SHOW) {
-      return await prisma.booking.update({
-        where: { id: bookingId },
-        data: { status: BookingStatus.NO_SHOW },
-      });
-    }
-
-    return await prisma.booking.update({
-      where: { id: bookingId },
-      data: { status: newStatus },
-    });
+    return await this.transitionBookingStatus(bookingId, newStatus as string, currentUser, reason);
   }
 
   /**
@@ -799,6 +906,7 @@ export class BookingService {
       branchId?: string;
       date?: string;
       status?: string;
+      specialistId?: string;
       search?: string;
       page?: number;
       limit?: number;
@@ -806,11 +914,27 @@ export class BookingService {
   ) {
     let targetBranchId = query.branchId;
     if (currentUser.role === "BRANCH_ADMIN") {
+      if (query.branchId && query.branchId !== "all" && query.branchId !== currentUser.branchId) {
+        throw new ForbiddenError("Forbidden: branch access denied");
+      }
       targetBranchId = currentUser.branchId || undefined;
+    } else if (currentUser.role === "EMPLOYEE") {
+      const emp = await prisma.employee.findFirst({
+        where: {
+          OR: [
+            { userId: currentUser.id },
+            ...(currentUser.email ? [{ email: currentUser.email }] : []),
+            ...(currentUser.phoneNumber ? [{ phone: currentUser.phoneNumber }] : []),
+          ],
+        },
+      });
+      if (emp) {
+        targetBranchId = emp.branchId;
+      }
     }
 
     const where: any = {};
-    if (targetBranchId) {
+    if (targetBranchId && targetBranchId !== "all") {
       where.branchId = targetBranchId;
     }
 
@@ -818,15 +942,20 @@ export class BookingService {
       where.status = query.status as BookingStatus;
     }
 
+    const itemFilter: any = {};
     if (query.date) {
       const [y, m, d] = query.date.split("-").map(Number);
       const startOfDay = new Date(y, m - 1, d, 0, 0, 0, 0);
       const endOfDay = new Date(y, m - 1, d, 23, 59, 59, 999);
-      where.items = {
-        some: {
-          startTime: { gte: startOfDay, lte: endOfDay },
-        },
-      };
+      itemFilter.startTime = { gte: startOfDay, lte: endOfDay };
+    }
+
+    if (query.specialistId) {
+      itemFilter.employeeId = query.specialistId;
+    }
+
+    if (Object.keys(itemFilter).length > 0) {
+      where.items = { some: itemFilter };
     }
 
     if (query.search) {

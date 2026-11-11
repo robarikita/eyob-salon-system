@@ -20,6 +20,13 @@ customerBookingRouter.post(
 );
 
 customerBookingRouter.get(
+  "/",
+  authenticate,
+  authorize("OWNER", "BRANCH_ADMIN", "EMPLOYEE"),
+  BookingController.getAdminAppointments
+);
+
+customerBookingRouter.get(
   "/my-bookings",
   authenticate,
   BookingController.getMyBookings
@@ -29,6 +36,12 @@ customerBookingRouter.get(
   "/:idOrRef",
   authenticate,
   BookingController.getBookingByIdOrRef
+);
+
+customerBookingRouter.patch(
+  "/:id/status",
+  authenticate,
+  BookingController.transitionStatus
 );
 
 customerBookingRouter.patch(

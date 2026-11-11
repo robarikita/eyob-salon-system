@@ -358,15 +358,19 @@ model BranchService {
 
 model Booking {
   id               String        @id @default(uuid())
-  bookingNumber    String        @unique // Unique readable booking identifier (e.g., BK-12345)
+  bookingNumber    String        @unique // Unique readable booking identifier (e.g., EYB-10245)
   status           BookingStatus @default(PENDING_PAYMENT)
   totalAmount      Decimal       @db.Decimal(10, 2)
+  depositAmount    Decimal?      @db.Decimal(10, 2)
   depositRequired  Decimal       @db.Decimal(10, 2)
   depositPaid      Decimal       @default(0) @db.Decimal(10, 2)
   balanceDue       Decimal       @db.Decimal(10, 2)
+  paymentMethod    String?       // "CHAPA", "CASH", "CARD"
+  paymentStatus    String?       @default("PENDING") // "PENDING", "PARTIALLY_PAID", "PAID", "REFUNDED"
   reservationExpires DateTime?   // Timestamp for slot holds
   notes            String?       // Customer notes & special requests
   cancellationReason String?     // Reason for cancellation or rejection
+  cancelledAt      DateTime?     // Timestamp when cancelled
   
   // Relations
   customerId       String
@@ -381,6 +385,10 @@ model Booking {
 
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
+
+  @@index([branchId, status])
+  @@index([customerId, status])
+  @@index([bookingNumber])
 }
 
 model BookingItem {
@@ -396,6 +404,7 @@ model BookingItem {
   snapshotPrice           Decimal? @db.Decimal(10, 2)
   snapshotDurationMinutes Int?
   snapshotDepositAmount   Decimal? @db.Decimal(10, 2)
+  snapshotEmployeeName    String?
   
   startTime             DateTime
   endTime               DateTime

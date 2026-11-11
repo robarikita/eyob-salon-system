@@ -46,21 +46,34 @@ export const StaffDashboardPage: React.FC = () => {
 
   const handleUpdateStatus = async (id: string, newStatus: string) => {
     try {
-      await bookingApi.updateStaffAppointmentStatus(id, { status: newStatus });
+      await bookingApi.transitionBookingStatus(id, newStatus);
       await loadFloorData();
     } catch (err: any) {
-      alert(err.message || 'Status update failed');
+      alert(err.message || (isAm ? 'ሁኔታ መቀየር አልተሳካም' : 'Status update failed'));
     }
   };
 
-  const handleReject = async (id: string) => {
-    const reason = prompt(isAm ? 'የመሰረዣ ምክንያት፡' : 'Reason for rejection:');
-    if (!reason) return;
+  const handleDecline = async (id: string) => {
+    const reason = prompt(isAm ? 'የመሰረዣ ምክንያት (ቢያንስ 3 ፊደላት)፡' : 'Cancellation reason (min 3 chars):');
+    if (!reason || reason.trim().length < 3) {
+      if (reason) alert(isAm ? 'ምክንያቱ ቢያንስ 3 ፊደላት መሆን አለበት' : 'Reason must be at least 3 characters');
+      return;
+    }
     try {
-      await bookingApi.rejectStaffAppointment(id, reason);
+      await bookingApi.transitionBookingStatus(id, 'CANCELLED', reason.trim());
       await loadFloorData();
     } catch (err: any) {
-      alert(err.message || 'Action failed');
+      alert(err.message || (isAm ? 'እርምጃው አልተሳካም' : 'Action failed'));
+    }
+  };
+
+  const handleNoShow = async (id: string) => {
+    if (!confirm(isAm ? 'ደንበኛው አልመጣም ብለው ያረጋግጣሉ?' : 'Mark patron as No Show?')) return;
+    try {
+      await bookingApi.transitionBookingStatus(id, 'NO_SHOW');
+      await loadFloorData();
+    } catch (err: any) {
+      alert(err.message || (isAm ? 'እርምጃው አልተሳካም' : 'Action failed'));
     }
   };
 
@@ -73,7 +86,7 @@ export const StaffDashboardPage: React.FC = () => {
     : 'Specialist';
 
   const displayBranch = profile?.branch?.name || (user as any)?.branch?.name || 'Sanctuary';
-  const displayTitle = profile?.ritualTitle || (profile as any)?.title || 'Specialist';
+  const displayTitle = profile?.ritualTitle || (profile as any)?.title || (isAm ? 'ባለሙያ' : 'Specialist');
 
   const qualifiedServices = profile?.services || [];
 
@@ -83,7 +96,7 @@ export const StaffDashboardPage: React.FC = () => {
       <header className="bg-[#181412] border-b border-[#2C2724] px-4 lg:px-8 py-3 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-3">
           <Link to="/" className="text-lg font-serif font-bold text-[#D4AF37] tracking-wider">
-            EYOB <span className="text-[10px] text-stone-400 uppercase tracking-widest font-sans ml-1">Staff</span>
+            EYOB <span className="text-[10px] text-stone-400 uppercase tracking-widest font-sans ml-1">{isAm ? 'ሰራተኞች' : 'Staff'}</span>
           </Link>
 
           {/* Branch Badge */}
@@ -112,7 +125,7 @@ export const StaffDashboardPage: React.FC = () => {
             type="button"
             onClick={() => {
               logout();
-              navigate('/staff/login');
+              navigate('/login');
             }}
             className="px-2.5 py-1.5 rounded-lg border border-red-900/50 text-red-400 hover:bg-red-950/40 text-xs font-semibold transition flex items-center gap-1"
             title="Sign Out"
@@ -155,7 +168,7 @@ export const StaffDashboardPage: React.FC = () => {
 
         {/* Status Filter Tabs */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-          {['ALL', 'CONFIRMED', 'IN_PROGRESS', 'COMPLETED', 'REJECTED'].map((st) => (
+          {['ALL', 'CONFIRMED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'].map((st) => (
             <button
               key={st}
               onClick={() => setStatusFilter(st)}
@@ -171,19 +184,19 @@ export const StaffDashboardPage: React.FC = () => {
                   : 'All'
                 : st === 'CONFIRMED'
                 ? isAm
-                  ? 'የተረጋገጡ'
+                  ? 'የጸደቁ'
                   : 'Confirmed'
                 : st === 'IN_PROGRESS'
                 ? isAm
-                  ? 'በሂደት ላይ'
+                  ? 'በሂደት'
                   : 'In Progress'
                 : st === 'COMPLETED'
                 ? isAm
                   ? 'የተጠናቀቁ'
                   : 'Completed'
                 : isAm
-                ? 'ውድቅ'
-                : 'Rejected'}
+                ? 'የተሰረዙ'
+                : 'Cancelled'}
             </button>
           ))}
         </div>
@@ -207,8 +220,10 @@ export const StaffDashboardPage: React.FC = () => {
                 const item = apt.items?.[0];
                 const startTime = item ? new Date(item.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-';
                 const endTime = item ? new Date(item.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-';
-                const customerName = apt.customer ? `${apt.customer.firstName} ${apt.customer.lastName}` : (apt.guestName || 'Client');
-                const serviceName = item?.snapshotServiceName || item?.service?.name || item?.serviceTitleSnapshot || 'Service';
+                const customerName = apt.customer ? `${apt.customer.firstName} ${apt.customer.lastName}` : (apt.guestName || (isAm ? 'ደንበኛ' : 'Client'));
+                const serviceName = item?.snapshotServiceName || item?.service?.name || item?.serviceTitleSnapshot || (isAm ? 'አገልግሎት' : 'Service');
+                const workstation = item?.employee?.workstation || (isAm ? 'ክፍል 1' : 'Station 1');
+                const bookingNum = apt.bookingNumber || apt.bookingReference || apt.id.slice(0, 8);
 
                 return (
                   <div
@@ -220,28 +235,40 @@ export const StaffDashboardPage: React.FC = () => {
                         <span className="font-mono text-xs font-bold text-[#D4AF37]">
                           {startTime} – {endTime}
                         </span>
-                        <span className="text-[10px] text-stone-500">#{apt.bookingReference || apt.id.slice(0, 8)}</span>
+                        <span className="font-mono text-[11px] font-bold text-[#D4AF37] bg-[#0E0B09] px-2 py-0.5 rounded border border-[#D4AF37]/30">
+                          #{bookingNum}
+                        </span>
                       </div>
 
                       <span
                         className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                           apt.status === 'CONFIRMED'
-                            ? 'bg-amber-950 text-[#D4AF37] border border-[#D4AF37]/40'
+                            ? 'bg-amber-950/80 text-[#D4AF37] border border-[#D4AF37]/40'
                             : apt.status === 'IN_PROGRESS'
-                            ? 'bg-blue-950 text-blue-400 border border-blue-800'
+                            ? 'bg-blue-950/80 text-blue-400 border border-blue-800'
                             : apt.status === 'COMPLETED'
-                            ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                            ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800'
                             : 'bg-stone-800 text-stone-400'
                         }`}
                       >
-                        {apt.status}
+                        {apt.status === 'CONFIRMED'
+                          ? isAm ? 'የጸደቀ' : 'Confirmed'
+                          : apt.status === 'IN_PROGRESS'
+                          ? isAm ? 'በሂደት' : 'In Service'
+                          : apt.status === 'COMPLETED'
+                          ? isAm ? 'የተጠናቀቀ' : 'Completed'
+                          : apt.status === 'CANCELLED'
+                          ? isAm ? 'የተሰረዘ' : 'Cancelled'
+                          : apt.status}
                       </span>
                     </div>
 
                     <div className="flex items-center justify-between text-xs">
                       <div>
                         <div className="font-bold text-[#FAF7F2]">{customerName}</div>
-                        <div className="text-[11px] text-stone-400">{serviceName}</div>
+                        <div className="text-[11px] text-stone-400">
+                          {serviceName} • <span className="text-[#D4AF37]">{workstation}</span>
+                        </div>
                       </div>
 
                       {apt.customer?.phone && (
@@ -251,7 +278,7 @@ export const StaffDashboardPage: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Actions */}
+                    {/* Actions (strictly 1-2 words) */}
                     <div className="pt-2 border-t border-[#2C2724] flex items-center justify-end gap-2 text-xs">
                       {apt.status === 'CONFIRMED' && (
                         <>
@@ -264,7 +291,14 @@ export const StaffDashboardPage: React.FC = () => {
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleReject(apt.id)}
+                            onClick={() => handleNoShow(apt.id)}
+                            className="px-2.5 py-1 rounded border border-stone-700 text-stone-400 text-[11px] hover:bg-stone-800 transition"
+                          >
+                            {isAm ? 'አልመጡም' : 'No Show'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDecline(apt.id)}
                             className="px-2.5 py-1 rounded border border-red-900/50 text-red-400 text-[11px] hover:bg-red-950/40 transition"
                           >
                             {isAm ? 'እምቢ' : 'Decline'}
@@ -312,7 +346,7 @@ export const StaffDashboardPage: React.FC = () => {
                       key={qs.id || qs.serviceId}
                       className="px-2 py-1 rounded bg-[#0E0B09] border border-[#2C2724] text-[11px] text-stone-300 font-medium"
                     >
-                      {qs.service?.name || qs.service?.title || 'Service'}
+                      {qs.service?.name || qs.service?.title || (isAm ? 'አገልግሎት' : 'Service')}
                     </span>
                   ))}
                 </div>

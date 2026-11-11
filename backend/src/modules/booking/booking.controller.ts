@@ -201,11 +201,29 @@ export class BookingController {
         branchId: req.query.branchId as string | undefined,
         date: req.query.date as string | undefined,
         status: req.query.status as string | undefined,
+        specialistId: req.query.specialistId as string | undefined,
         search: req.query.search as string | undefined,
         page: req.query.page ? Number(req.query.page) : undefined,
         limit: req.query.limit ? Number(req.query.limit) : undefined,
       });
       res.status(200).json({ status: "success", data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async transitionStatus(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = req.params.id as string;
+      const targetStatus = (req.body.targetStatus || req.body.status) as string;
+      const reason = req.body.cancellationReason || req.body.reason;
+      const booking = await BookingService.transitionBookingStatus(
+        id,
+        targetStatus,
+        req.user!,
+        reason
+      );
+      res.status(200).json({ status: "success", success: true, data: { booking } });
     } catch (error) {
       next(error);
     }
